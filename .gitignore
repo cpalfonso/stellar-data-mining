@@ -1,0 +1,8 @@
+.DS_Store
+EarthBytePlateMotionModel-ARCHIVE
+__pycache__
+.mypy_cache
+.vscode
+export
+subduction_data.csv
+Clennett_data
