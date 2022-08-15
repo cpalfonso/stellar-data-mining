@@ -6,8 +6,8 @@ Input data for the Clennett et al. (2020) plate model can be downloaded from the
 Different plate models or input datasets can be used by providing a different configuration file (using `subduction_config.yml` as a template).
 
 ### Requirements
-- gplately
-- pygplates
+- [gplately](https://github.com/GPlates/gplately)
+- [pygplates](https://www.gplates.org/)
 - scikit-image
 - scikit-learn
 - xarray
