@@ -1,10 +1,6 @@
-# from itertools import repeat
-# from multiprocessing import Pool, set_start_method
 import os
-# from platform import system
 
 import geopandas as gpd
-from joblib import Parallel, delayed
 import numpy as np
 from rasterio.enums import MergeAlg
 from rasterio.features import rasterize
@@ -12,12 +8,6 @@ from rasterio.transform import from_bounds
 import xarray as xr
 
 INCREMENT = 1
-
-# if system() == "Darwin":
-#     try:
-#         set_start_method("spawn")
-#     except RuntimeError:
-#         pass
 
 
 def run_create_plate_map(
@@ -31,40 +21,27 @@ def run_create_plate_map(
 ):
     times = range(min_time, max_time + INCREMENT, INCREMENT)
 
-    v = 10 if verbose else 0
-    p = Parallel(nprocs, verbose=v)
-    p(
-        delayed(create_plate_map)(
-            time,
-            input_dir,
-            output_dir,
-            resolution,
-        )
-        for time in times
-    )
+    if nprocs == 1:
+        for time in times:
+            create_plate_map(
+                time,
+                input_dir,
+                output_dir,
+                resolution,
+            )
+    else:
+        from joblib import Parallel, delayed
 
-    # if nprocs == 1:
-    #     for time in times:
-    #         create_plate_map(
-    #             time=time,
-    #             input_dir=input_dir,
-    #             output_dir=output_dir,
-    #             resolution=resolution,
-    #         )
-    # else:
-    #     n = len(times)
-    #     chunk_size = int(n / nprocs / 4)
-    #     chunk_size = max([chunk_size, 1])
-    #     args = zip(
-    #         times,
-    #         repeat(input_dir, n),
-    #         repeat(output_dir, n),
-    #         repeat(resolution, n),
-    #     )
-    #     with Pool(nprocs) as pool:
-    #         pool.starmap(create_plate_map, args, chunksize=chunk_size)
-    #         pool.close()
-    #         pool.join()
+        p = Parallel(nprocs, verbose=10 * int(verbose))
+        p(
+            delayed(create_plate_map)(
+                time,
+                input_dir,
+                output_dir,
+                resolution,
+            )
+            for time in times
+        )
 
 
 def create_plate_map(time, input_dir, output_dir, resolution):

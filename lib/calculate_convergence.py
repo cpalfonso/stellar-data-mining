@@ -2,7 +2,6 @@ import math
 import os
 import warnings
 
-from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 from ptt import subduction_convergence
@@ -28,6 +27,8 @@ def run_calculate_convergence(
             output_dir=output_dir,
         )
     else:
+        from joblib import Parallel, delayed
+
         times = np.array_split(
             np.arange(min_time, max_time + INCREMENT, INCREMENT),
             nprocs,

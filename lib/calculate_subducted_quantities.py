@@ -1,34 +1,12 @@
-# from multiprocessing import cpu_count, Pool, set_start_method
 import os
-# from platform import system
 from sys import stderr
 
 from gplately import EARTH_RADIUS
-from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-# DIRNAME = os.path.abspath(os.path.dirname(__file__))
-
-# _DEFAULT_MIN_TIME = 0
-# _DEFAULT_MAX_TIME = 170
 _DEFAULT_RESOLUTION = 0.5  # degrees
-# _OUTDIR = os.path.join(DIRNAME, "..", "..", "output")
-# _OUTDIR = "/Users/chris/Desktop/Clennett_outputs"
-# _DEFAULT_SEDTHICK_DIR = os.path.join(
-#     _OUTDIR, "SedimentThickness", "predicted_thickness"
-# )
-# _DEFAULT_SUBDUCTION_DATA_FILENAME = os.path.join(
-#     _OUTDIR, "DataMining", "subduction_data_combined.csv"
-# )
-# _DEFAULT_OUTPUT_DIR = os.path.join(_OUTDIR, "SubductedSediments")
-
-# if system() == "Darwin":
-#     try:
-#         set_start_method("spawn")
-#     except RuntimeError:
-#         pass
 
 
 def run_calculate_subducted_quantities(
@@ -121,47 +99,31 @@ def run_calculate_subducted_quantities(
     if verbose:
         print("Extracting data...", file=stderr)
 
-    v = 10 if verbose else 0
-    p = Parallel(nprocs, verbose=v)
-    timestep_results = p(
-        delayed(extract_timestep)(
+    if nprocs == 1:
+        timestep_results = [
+            extract_timestep(
             time,
             (subduction_data[subduction_data["age (Ma)"] == time]).copy(),
             quantities,
             resolution,
             transforms,
+            )
+            for time in times
+        ]
+    else:
+        from joblib import Parallel, delayed
+
+        p = Parallel(nprocs, verbose=10 * int(verbose))
+        timestep_results = p(
+            delayed(extract_timestep)(
+                time,
+                (subduction_data[subduction_data["age (Ma)"] == time]).copy(),
+                quantities,
+                resolution,
+                transforms,
+            )
+            for time in times
         )
-        for time in times
-    )
-
-    # extract_timestep_args = []
-    # for time in times:
-    #     subduction_data_timestep = subduction_data[
-    #         subduction_data["age (Ma)"] == time
-    #     ]
-    #     extract_timestep_args.append(
-    #         (
-    #             time,
-    #             subduction_data_timestep.copy(),
-    #             quantities,
-    #             resolution,
-    #             transforms,
-    #         )
-    #     )
-
-    # if nprocs == 1:
-    #     timestep_results = []
-    #     for i in extract_timestep_args:
-    #         timestep_results.append(extract_timestep(*i))
-    # else:
-    #     nargs = len(extract_timestep_args)
-    #     chunk_size = max([int(nargs / nprocs), 1])
-    #     with Pool(nprocs) as pool:
-    #         timestep_results = pool.starmap(
-    #             extract_timestep, extract_timestep_args, chunksize=chunk_size
-    #         )
-    #         pool.close()
-    #         pool.join()
 
     densities = {}
     cumulative_densities = {}
@@ -281,144 +243,3 @@ def _latitude_length(delta=1.0, radius=EARTH_RADIUS * 1000.0, degrees=True):
     if degrees:
         delta = np.deg2rad(delta)
     return radius * delta
-
-
-# def _get_args():
-#     from argparse import ArgumentParser
-
-#     parser = ArgumentParser(
-#         description="Calculate cumulative subducted sediments"
-#     )
-#     parser.add_argument(
-#         "-s",
-#         "--min-time",
-#         type=int,
-#         help="start time (Ma); default: {}".format(_DEFAULT_MIN_TIME),
-#         default=_DEFAULT_MIN_TIME,
-#         dest="min_time",
-#     )
-#     parser.add_argument(
-#         "-e",
-#         "--max-time",
-#         type=int,
-#         help="end time (Ma); default: {}".format(_DEFAULT_MAX_TIME),
-#         default=_DEFAULT_MAX_TIME,
-#         dest="max_time",
-#     )
-#     parser.add_argument(
-#         "-r",
-#         "--resolution",
-#         type=float,
-#         help="resolution of output grid (degrees); default: {}".format(
-#             _DEFAULT_RESOLUTION
-#         ),
-#         default=_DEFAULT_RESOLUTION,
-#         dest="resolution",
-#     )
-#     parser.add_argument(
-#         "-t",
-#         "--sedthick-dir",
-#         help="sediment thickness directory; default: `{}`".format(
-#             os.path.relpath(_DEFAULT_SEDTHICK_DIR)
-#         ),
-#         default=_DEFAULT_SEDTHICK_DIR,
-#         dest="sedthick_dir",
-#     )
-#     parser.add_argument(
-#         "-d",
-#         "--subduction-data-file",
-#         help="subduction data filename; default: `{}`".format(
-#             os.path.relpath(_DEFAULT_SUBDUCTION_DATA_FILENAME)
-#         ),
-#         default=_DEFAULT_SUBDUCTION_DATA_FILENAME,
-#         dest="subduction_data_filename",
-#     )
-#     parser.add_argument(
-#         "-o",
-#         "--output-dir",
-#         help="output directory; default: `{}`".format(
-#             os.path.relpath(_DEFAULT_OUTPUT_DIR)
-#         ),
-#         default=_DEFAULT_OUTPUT_DIR,
-#         dest="output_dir",
-#     )
-#     parser.add_argument(
-#         "-n",
-#         "--nprocs",
-#         type=int,
-#         help="number of processes to use; default: 1",
-#         default=1,
-#         dest="nprocs",
-#     )
-#     parser.add_argument(
-#         "-v",
-#         "--verbose",
-#         help="print more information to stderr",
-#         action="store_true",
-#         dest="verbose",
-#     )
-#     return vars(parser.parse_args())
-
-
-# def _check_args(**kwargs):
-#     min_time = int(kwargs.get("min_time", _DEFAULT_MIN_TIME))
-#     max_time = int(kwargs.get("max_time", _DEFAULT_MAX_TIME))
-#     resolution = float(kwargs.get("resolution", _DEFAULT_RESOLUTION))
-#     sedthick_dir = os.path.abspath(
-#         kwargs.get("sedthick_dir", _DEFAULT_SEDTHICK_DIR)
-#     )
-#     subduction_data_filename = os.path.abspath(
-#         kwargs.get("subduction_data_filename", _DEFAULT_SUBDUCTION_DATA_FILENAME)
-#     )
-#     output_dir = os.path.abspath(kwargs.get("output_dir", _DEFAULT_OUTPUT_DIR))
-#     nprocs = int(kwargs.get("nprocs", 1))
-#     verbose = kwargs.get("verbose", False)
-
-#     for t, n in zip((min_time, max_time), ("min.", "max.")):
-#         if t < 0:
-#             raise ValueError("Invalid {} time: {}".format(n, t))
-
-#     if min_time > max_time:
-#         min_time, max_time = max_time, min_time
-
-#     if resolution <= 0.0:
-#         raise ValueError("Invalid resolution: {}".format(resolution))
-
-#     if not os.path.isdir(sedthick_dir):
-#         raise FileNotFoundError(
-#             "Sediment thickness directory not found: " + sedthick_dir
-#         )
-#     if not os.path.isfile(subduction_data_filename):
-#         raise FileNotFoundError(
-#             "Subduction data file not found: " + subduction_data_filename
-#         )
-
-#     nargs = max_time - min_time + 1
-#     if nprocs == -1 or nprocs == 0:
-#         nprocs = cpu_count()
-#     if nprocs <= 0:
-#         raise ValueError("Invalid `nprocs`: {}".format(nprocs))
-#     nprocs = min([nprocs, cpu_count(), int(nargs / 4)])
-#     nprocs = max([nprocs, 1])
-
-#     if not os.path.isdir(output_dir):
-#         if verbose:
-#             print(
-#                 "Output directory does not exist; creating now: " + output_dir
-#             )
-#         os.makedirs(output_dir, exist_ok=True)
-
-#     return {
-#         "min_time": min_time,
-#         "max_time": max_time,
-#         "resolution": resolution,
-#         "sedthick_dir": sedthick_dir,
-#         "subduction_data_filename": subduction_data_filename,
-#         "output_dir": output_dir,
-#         "nprocs": nprocs,
-#         "verbose": verbose,
-#     }
-
-
-# if __name__ == "__main__":
-#     run_calculate_subducted_quantities(**_check_args(**_get_args()))

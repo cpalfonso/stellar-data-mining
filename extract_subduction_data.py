@@ -1,8 +1,7 @@
 import os
 import yaml
-from sys import argv, stderr
+from sys import stderr
 from tempfile import TemporaryDirectory
-from tempfile import mkdtemp
 
 from gplately.tools import plate_isotherm_depth
 
@@ -65,17 +64,9 @@ def main(
         verbose=verbose,
     )
 
-    plate_maps_dir = mkdtemp()
-    convergence_dir = mkdtemp()
-    subducted_quantities_dir = mkdtemp()
-
-    print("plate_maps_dir: " + plate_maps_dir, file=stderr)
-    print("convergence_dir: " + convergence_dir, file=stderr)
-    print("subducted_quantities_dir: " + subducted_quantities_dir, file=stderr)
-
-    with TemporaryDirectory() as _, \
-         TemporaryDirectory() as _, \
-         TemporaryDirectory() as _:
+    with TemporaryDirectory() as plate_maps_dir, \
+         TemporaryDirectory() as convergence_dir, \
+         TemporaryDirectory() as subducted_quantities_dir:
         # Rasterise plate topologies (used later)
         run_create_plate_map(
             nprocs=nprocs,
@@ -163,6 +154,11 @@ def main(
                 "water_thickness",
             ),
             verbose=verbose,
+        )
+    if verbose:
+        print(
+            "Subduction data written to output file: " + output_filename,
+            file=stderr,
         )
 
 

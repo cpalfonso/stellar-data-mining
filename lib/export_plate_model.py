@@ -4,7 +4,6 @@ import warnings
 import geopandas as gpd
 from gplately.geometry import pygplates_to_shapely
 from gplately import gpml
-from joblib import Parallel, delayed
 import pygplates
 
 INCREMENT = 1
@@ -22,18 +21,29 @@ def run_export_plate_model(
 ):
     times = range(min_time, max_time + INCREMENT, INCREMENT)
 
-    v = 10 if verbose else 0
-    p = Parallel(nprocs, verbose=v)
-    p(
-        delayed(export_plate_model)(
-            time,
-            topology_filenames,
-            rotation_filenames,
-            coastline_filenames,
-            output_dir,
+    if nprocs == 1:
+        for time in times:
+            export_plate_model(
+                time,
+                topology_filenames,
+                rotation_filenames,
+                coastline_filenames,
+                output_dir,
+            )
+    else:
+        from joblib import Parallel, delayed
+
+        p = Parallel(nprocs, verbose=10 * int(verbose))
+        p(
+            delayed(export_plate_model)(
+                time,
+                topology_filenames,
+                rotation_filenames,
+                coastline_filenames,
+                output_dir,
+            )
+            for time in times
         )
-        for time in times
-    )
 
 
 def export_plate_model(

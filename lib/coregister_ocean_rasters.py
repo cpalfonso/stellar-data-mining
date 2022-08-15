@@ -1,8 +1,5 @@
-from multiprocessing import Pool, set_start_method
 import os
-from platform import system
 
-from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 from skimage.transform import resize
@@ -10,12 +7,6 @@ from sklearn.neighbors import NearestNeighbors
 import xarray as xr
 
 INCREMENT = 1
-
-if system() == "Darwin":
-    try:
-        set_start_method("spawn")
-    except RuntimeError:
-        pass
 
 
 def run_coregister_ocean_rasters(
@@ -56,24 +47,43 @@ def run_coregister_ocean_rasters(
             for time in times
         ]
 
-    v = 10 if verbose else 0
-    p = Parallel(nprocs, verbose=v)
-    out = p(
-        delayed(coregister_ocean_rasters)(
-            time,
-            input_data_t,
-            plates_dir,
-            agegrid_dir,
-            sedthick_dir,
-            carbonate_dir,
-            output_dir,
-            subducted_thickness_dir,
-            subducted_sediments_dir,
-            subducted_carbonates_dir,
-            subducted_water_dir,
+    if nprocs == 1:
+        out = [
+            coregister_ocean_rasters(
+                time,
+                input_data_t,
+                plates_dir,
+                agegrid_dir,
+                sedthick_dir,
+                carbonate_dir,
+                output_dir,
+                subducted_thickness_dir,
+                subducted_sediments_dir,
+                subducted_carbonates_dir,
+                subducted_water_dir,
+            )
+            for time, input_data_t in zip(times, input_data)
+        ]
+    else:
+        from joblib import Parallel, delayed
+
+        p = Parallel(nprocs, verbose=10 * int(verbose))
+        out = p(
+            delayed(coregister_ocean_rasters)(
+                time,
+                input_data_t,
+                plates_dir,
+                agegrid_dir,
+                sedthick_dir,
+                carbonate_dir,
+                output_dir,
+                subducted_thickness_dir,
+                subducted_sediments_dir,
+                subducted_carbonates_dir,
+                subducted_water_dir,
+            )
+            for time, input_data_t in zip(times, input_data)
         )
-        for time, input_data_t in zip(times, input_data)
-    )
 
     out = pd.concat(out, ignore_index=True)
     if combined_filename is not None:
