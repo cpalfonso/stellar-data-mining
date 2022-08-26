@@ -17,7 +17,6 @@ model_params:
   coastline_filenames:
     - "shapes_coastlines_Merdith_et_al.gpml"
     - "shapes_continents_Merdith_et_al.gpml"
-    - "shapes_cratons_Merdith_et_al.gpml"
 run_params:
   output_filename: "subduction_data_Merdith.csv"
   nprocs: 8
