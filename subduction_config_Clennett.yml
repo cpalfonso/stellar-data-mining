@@ -74,11 +74,11 @@ model_params:
     - "Clennett_2020_Coastlines.gpml"
     - "Clennett_2020_Terranes.gpml"
     - "South_America.gpml"
-data_sources:
+raster_data:
   agegrid_dir: "Clennett_data/AgeGrids/masked"
   sedthick_dir: "Clennett_data/SedimentThickness"
   carbonate_dir: "Clennett_data/CarbonateThickness/uncompacted"
 run_params:
-  output_filename: "subduction_data.csv"
+  output_filename: "subduction_data_Clennett.csv"
   nprocs: 8
   verbose: True
