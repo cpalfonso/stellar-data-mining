@@ -1,0 +1,32 @@
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3
+  - pygplates
+  - pip
+  - cartopy
+  - geopandas
+  - ipykernel
+  - joblib
+  - matplotlib
+  - netcdf4
+  - numpy
+  - pandas
+  - pooch
+  - pyyaml
+  - rasterio
+  - requests
+  - scikit-image
+  - scikit-learn=1.2.0
+  - scipy
+  - shapely
+  - six
+  - stripy
+  - tqdm
+  - xarray
+  - py-xgboost
+  - pip:
+    - PlateTectonicTools
+    - "git+https://github.com/pulearn/pulearn.git@master"
+    - "git+https://github.com/GPlates/gplately.git@master"

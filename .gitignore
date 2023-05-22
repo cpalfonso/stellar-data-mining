@@ -4,5 +4,6 @@ __pycache__
 .mypy_cache
 .vscode
 export
-*.csv
+subduction_data*.csv
 Clennett_data
+outputs
