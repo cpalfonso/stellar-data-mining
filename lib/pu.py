@@ -7,6 +7,7 @@ import xarray as xr
 from joblib import (
     Parallel,
     delayed,
+    dump,
 )
 from pulearn import BaggingPuClassifier
 from sklearn.base import BaseEstimator
@@ -20,6 +21,7 @@ from xgboost import XGBClassifier
 COLUMNS_TO_DROP = {
     "present_lon",
     "present_lat",
+    "region",
     "Cu (Mt)",
     "age (Ma)",
     "plate_id",
@@ -79,6 +81,24 @@ BASE_MODELS = {
     ),
 }
 
+DEFAULT_RANDOM_STATE = None
+DEFAULT_NPROCS = 1
+
+DIRNAME = os.path.abspath(os.path.dirname(__file__))
+DEFAULT_TRAINING_FILENAME = os.path.join(
+    DIRNAME,
+    "..",
+    "training_data.csv",
+)
+_OUTDIR = os.path.join(DIRNAME, "..", "outputs")
+DEFAULT_OUTPUT_FILENAME = os.path.join(
+    _OUTDIR,
+    "pu_classifier.joblib",
+)
+DEFAULT_BASE_CLASSIFIER = "randomforest"
+DEFAULT_WEIGHTS_COLUMN = None
+CONST_WEIGHTS_COLUMN = "Cu (Mt)"
+
 
 def create_classifier(
     training_data,
@@ -88,13 +108,10 @@ def create_classifier(
     return_arrays=False,
     label="label",
     fit=True,
-    pu_kwargs={},
-    weights_column=None,
-    downsample=True,
+    pu_kwargs=None,
     preservation=False,
     remove_correlated=True,
     remove_cumulative=False,
-    num_negatives=0,
 ):
     random_state = np.random.default_rng(random_state)
 
@@ -102,169 +119,80 @@ def create_classifier(
         if base_classifier not in BASE_MODELS.keys():
             raise ValueError("Invalid base_classifier: {}".format(base_classifier))
         base_classifier = BASE_MODELS[base_classifier]
+    if pu_kwargs is None:
+        pu_kwargs = {}
 
-    out = prepare_training_arrays(
-        training_data=training_data,
+    x, y = get_xy(
+        training_data,
         label=label,
-        random_state=random_state,
-        weights_column=weights_column,
-        downsample=downsample,
-        preservation=preservation,
         remove_correlated=remove_correlated,
         remove_cumulative=remove_cumulative,
-        negatives=num_negatives,
+        remove_preservation=(not preservation),
     )
-    if weights_column is None:
-        x, y = out
-        weights = None
-    else:
-        x, y, weights = out
 
-    if "n_estimators" not in pu_kwargs:
-        pu_kwargs["n_estimators"] = 250
-    if "max_samples" not in pu_kwargs:
-        pu_kwargs["max_samples"] = 1.0
+    n_estimators = pu_kwargs.pop("n_estimators", 250)
+    max_samples = pu_kwargs.pop("max_samples", 1.0)
 
     bc = BaggingPuClassifier(
         base_classifier,
         n_jobs=threads,
         random_state=np.random.RandomState(random_state.bit_generator),
+        n_estimators=n_estimators,
+        max_samples=max_samples,
         **pu_kwargs,
     )
     if fit:
-        bc.fit(x, y, sample_weight=weights)
+        bc.fit(x, y)
     if return_arrays:
         return bc, x, y
     return bc
 
 
-def prepare_training_arrays(
-    training_data,
+def get_xy(
+    data,
     label="label",
-    random_state=None,
-    return_dataframe=False,
-    weights_column=None,
-    downsample=True,
-    preservation=False,
     remove_correlated=True,
     remove_cumulative=False,
-    negatives=0,
+    remove_preservation=True,
 ):
-    random_state = np.random.default_rng(random_state)
+    if not isinstance(data, pd.DataFrame):
+        try:
+            data = pd.read_csv(data)
+        except Exception:
+            data = pd.DataFrame(data)
 
-    try:
-        training_data = pd.read_csv(training_data, low_memory=False)
-    except Exception:
-        training_data = pd.DataFrame(training_data)
-
-    negatives = int(negatives)
-    if negatives < 0:
-        raise ValueError("`negatives` must be greater than or equal to zero.")
-    if negatives > 0:
-        negative_data = training_data[training_data["label"] == "negative"]
-        negative_indices = random_state.choice(negative_data.shape[0], size=negatives)
-        negative_data = negative_data.iloc[negative_indices, :]
-    else:
-        negative_data = None
-
-    if "set" in training_data.columns:
-        training_data = training_data[training_data["set"] == "train"]
-    training_data = training_data[
-        training_data["label"].isin(
-            {
-                "positive",
-                "unlabeled",
-                "unlabelled",
-            }
-        )
-    ]
-    if negative_data is not None:
-        training_data = pd.concat((training_data, negative_data))
-    if weights_column is not None:
-        weights = training_data[weights_column].copy()
-        valid_weights = weights[~weights.isna()]
-        num_to_fill = weights.isna().sum()
-        weights[weights.isna()] = random_state.choice(
-            valid_weights,
-            size=num_to_fill,
-        )
-        training_data["sample_weight"] = weights
-    else:
-        weights = None
-
-    training_data = training_data.drop(columns=COLUMNS_TO_DROP, errors="ignore")
+    to_drop = COLUMNS_TO_DROP.copy()
     if remove_correlated:
-        training_data = training_data.drop(columns=CORRELATED_COLUMNS, errors="ignore")
+        to_drop = to_drop.union(CORRELATED_COLUMNS)
     if remove_cumulative:
-        training_data = training_data.drop(columns=CUMULATIVE_COLUMNS, errors="ignore")
+        to_drop = to_drop.union(CUMULATIVE_COLUMNS)
+    if remove_preservation:
+        to_drop = to_drop.union(PRESERVATION_COLUMNS)
 
-    if not preservation:
-        training_data = training_data.drop(columns=PRESERVATION_COLUMNS, errors="ignore")
-
-    training_data = training_data.dropna()
-    if downsample:
-        training_data = undersample(
-            training_data,
-            label,
-            random_state=random_state,
-            skip_columns="negative" if negatives > 0 else None,
-        )
-
-    training_data = training_data.sort_index(axis="columns")
-
+    data = data.sort_index(axis="columns")
+    data = data.drop(columns=list(to_drop), errors="ignore")
+    data = data.dropna()
+    x = np.array(data.drop(columns=label))
     y = np.array(
-        training_data[label].apply(
-            lambda x: 1 if x == "positive" else 0
-        )
+        (data[label] == "positive").astype("int")
     )
-
-    features = []
-    for column in sorted(training_data.columns.values):
-        if column == "label" or (column == "sample_weight"):
-            continue
-        arr = np.array(training_data[column]).reshape((-1, 1))
-        features.append(arr)
-    x = np.hstack(features)
-
-    out = [x, y]
-    if weights is not None:
-        weights = np.array(training_data["sample_weight"])
-    if return_dataframe:
-        out.append(training_data)
-    if weights is not None:
-        out.append(weights)
-    return tuple(out)
+    return x, y
 
 
-def undersample(data, label="label", random_state=None, skip_columns=None):
-    if isinstance(random_state, np.random.RandomState):
-        random_state = np.random.default_rng(seed=random_state._bit_generator)
-    elif not isinstance(random_state, np.random.Generator):
-        random_state = np.random.default_rng(seed=random_state)
-
-    if skip_columns is not None:
-        if isinstance(skip_columns, str):
-            skip_columns = [skip_columns]
-        skipped_inds = data[label].isin(skip_columns)
-        skipped_data = data[skipped_inds]
-        data = data[~skipped_inds]
-    else:
-        skipped_data = None
-
-    gb = data.groupby(label)
-    sizes = gb.size()
-    n = sizes.min()
-    out = []
-    for label_value, label_data in gb:
-        if sizes.loc[label_value] == n:
-            tmp = label_data
-        else:
-            tmp_indices = random_state.choice(label_data.shape[0], n)
-            tmp = label_data.iloc[tmp_indices, :]
-        out.append(tmp)
-    if skipped_data is not None:
-        out.append(skipped_data)
-    return pd.concat(out)
+def downsample_unlabelled(data, n=None, random_state=None, label="label"):
+    if not isinstance(random_state, np.random.Generator):
+        random_state = np.random.default_rng(random_state)
+    if n is None:
+        n = (data[label] == "positive").sum()
+    labelled = data[data[label].isin({"positive", "negative"})]
+    unlabelled = data[data[label].isin({"unlabeled", "unlabelled"})]
+    idx = random_state.choice(
+        unlabelled.index,
+        size=n,
+        replace=False,
+    )
+    unlabelled = unlabelled.loc[idx, :]
+    return pd.concat((labelled, unlabelled), ignore_index=True)
 
 
 def calculate_feature_importances(classifier):
@@ -432,3 +360,218 @@ def _create_grid_time(
         },
     )
     return dset
+
+
+def main(
+    training_filename=DEFAULT_TRAINING_FILENAME,
+    output_filename=DEFAULT_OUTPUT_FILENAME,
+    random_state=DEFAULT_RANDOM_STATE,
+    base_classifier=DEFAULT_BASE_CLASSIFIER,
+    weights_column=DEFAULT_WEIGHTS_COLUMN,
+    nprocs=DEFAULT_NPROCS,
+    verbose=False,
+    preservation=False,
+    remove_cumulative=False,
+):
+    args = _check_args(
+        training_filename=training_filename,
+        output_filename=output_filename,
+        base_classifier=base_classifier,
+        weights_column=weights_column,
+        random_state=random_state,
+        preservation=preservation,
+        remove_cumulative=remove_cumulative,
+        nprocs=nprocs,
+        verbose=verbose,
+    )
+    training_filename = args["training_filename"]
+    output_filename = args["output_filename"]
+    base_classifier = args["base_classifier"]
+    weights_column = args["weights_column"]
+    random_state = args["random_state"]
+    preservation = args["preservation"]
+    remove_cumulative = args["remove_cumulative"]
+    nprocs = args["nprocs"]
+    verbose = args["verbose"]
+
+    random_state = np.random.default_rng(random_state)
+
+    if verbose:
+        print(
+            "Creating classifier from training data: " + training_filename,
+            file=stderr,
+        )
+        print(
+            "Base estimator: {}".format(
+                type(base_classifier).__name__
+                if isinstance(
+                    base_classifier,
+                    BaseEstimator,
+                )
+                else base_classifier
+            )
+        )
+        if weights_column is not None:
+            print(
+                "Weighting samples by column: " + weights_column,
+                file=stderr,
+            )
+        if preservation:
+            print(
+                "Including preservation-related quantities",
+                file=stderr,
+            )
+
+    output_dir = os.path.dirname(output_filename)
+    if not os.path.isdir(output_dir):
+        if verbose:
+            print(
+                f"Output directory does not exist; creating now: {output_dir}",
+                file=stderr,
+            )
+        os.makedirs(output_dir, exist_ok=True)
+
+    training_data = pd.read_csv(training_filename)
+    classifier, x, y = create_classifier(
+        training_data=training_data,
+        random_state=random_state,
+        base_classifier=base_classifier,
+        threads=nprocs,
+        return_arrays=True,
+        weights_column=weights_column,
+        preservation=preservation,
+        remove_cumulative=remove_cumulative,
+    )
+    if output_filename is not None:
+        if verbose:
+            print(
+                "Saving classifier to file: " + output_filename,
+                file=stderr,
+            )
+        dump(classifier, output_filename)
+    return classifier, x, y
+
+
+def _get_args():
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(
+        description="Create P-U classifier from given training data",
+    )
+    parser.add_argument(
+        "-i",
+        "--input-file",
+        help="training data input filename; default: `{}`".format(
+            os.path.relpath(DEFAULT_TRAINING_FILENAME)
+        ),
+        default=DEFAULT_TRAINING_FILENAME,
+        dest="training_filename",
+        metavar="INPUT_FILE",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-file",
+        help="model output filename; default: `{}`".format(
+            os.path.relpath(DEFAULT_OUTPUT_FILENAME)
+        ),
+        default=DEFAULT_OUTPUT_FILENAME,
+        dest="output_filename",
+        metavar="OUTPUT_FILE",
+    )
+    parser.add_argument(
+        "-w",
+        "--weights",
+        help="weight samples by a column; default: '{}'".format(
+            CONST_WEIGHTS_COLUMN
+        ),
+        nargs="?",
+        default=DEFAULT_WEIGHTS_COLUMN,
+        const=CONST_WEIGHTS_COLUMN,
+        dest="weights_column",
+        metavar="WEIGHTS_COLUMN",
+    )
+    parser.add_argument(
+        "-n",
+        "--nprocs",
+        help="number of processes to use; default: {}".format(DEFAULT_NPROCS),
+        type=int,
+        default=DEFAULT_NPROCS,
+        dest="nprocs",
+    )
+    parser.add_argument(
+        "--base-estimator",
+        help="base estimator to use; default: 'randomforest'",
+        choices=set(BASE_MODELS.keys()),
+        default="randomforest",
+        metavar="MODEL",
+        dest="base_classifier",
+    )
+    parser.add_argument(
+        "-p",
+        "--preservation",
+        help="include preservation-related quantities in classifier",
+        action="store_true",
+        dest="preservation",
+    )
+    parser.add_argument(
+        "--no-cumulative",
+        help="do not include cumulative subducted quantities in classifier",
+        action="store_true",
+        dest="remove_cumulative",
+    )
+    parser.add_argument(
+        "-r",
+        "--random-state",
+        help="seed for RNG; default: {}".format(DEFAULT_RANDOM_STATE),
+        type=int,
+        dest="random_state",
+        default=DEFAULT_RANDOM_STATE,
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        help="print more information to stderr",
+        action="store_true",
+        dest="verbose",
+    )
+    return vars(parser.parse_args())
+
+
+def _check_args(**kwargs):
+    training_filename = os.path.abspath(
+        kwargs.pop("training_filename", DEFAULT_TRAINING_FILENAME)
+    )
+    output_filename = os.path.abspath(
+        kwargs.pop("output_filename", DEFAULT_OUTPUT_FILENAME)
+    )
+    base_classifier = kwargs.pop("base_classifier", DEFAULT_BASE_CLASSIFIER)
+    weights_column = kwargs.pop("weights_column", DEFAULT_WEIGHTS_COLUMN)
+    nprocs = int(kwargs.pop("nprocs", DEFAULT_NPROCS))
+    preservation = bool(kwargs.pop("preservation", False))
+    remove_cumulative = bool(kwargs.pop("remove_cumulative", False))
+    random_state = int(kwargs.pop("random_state", DEFAULT_RANDOM_STATE))
+    verbose = bool(kwargs.pop("verbose", False))
+
+    for key in kwargs.keys():
+        raise TypeError(
+            "check_args got an unexpected keyword argument: " + key
+        )
+
+    if not os.path.isfile(training_filename):
+        raise FileNotFoundError(f"Input file not found: {training_filename}")
+
+    return {
+        "training_filename": training_filename,
+        "output_filename": output_filename,
+        "base_classifier": base_classifier,
+        "weights_column": weights_column,
+        "nprocs": nprocs,
+        "preservation": preservation,
+        "remove_cumulative": remove_cumulative,
+        "random_state": random_state,
+        "verbose": verbose,
+    }
+
+
+if __name__ == "__main__":
+    main(**_get_args())
