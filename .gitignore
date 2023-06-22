@@ -3,7 +3,7 @@ EarthBytePlateMotionModel-ARCHIVE
 __pycache__
 .mypy_cache
 .vscode
-export
 subduction_data*.csv
+grid_data.csv*
 Clennett_data
 outputs
