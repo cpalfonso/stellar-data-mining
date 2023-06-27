@@ -7,8 +7,6 @@ from gplately import (
     PlotTopologies,
     Raster,
 )
-from joblib import Parallel, delayed
-from moviepy.video.io import ImageSequenceClip
 
 FIGURE_SIZE_ORTHOGRAPHIC = (10, 10)
 FIGURE_SIZE_MOLLWEIDE = (16, 9)
