@@ -1,33 +1,38 @@
 import os
+import warnings
+from sys import stderr
 
 import numpy as np
 import pandas as pd
-from skimage.transform import resize
-from sklearn.neighbors import NearestNeighbors
+import pygplates
 import xarray as xr
+from sklearn.neighbors import NearestNeighbors
+from skimage.transform import resize
+
+from .create_plate_maps import create_plate_map
 
 INCREMENT = 1
 
 
 def run_coregister_ocean_rasters(
     nprocs,
-    min_time,
-    max_time,
+    times,
     input_data,
-    plates_dir,
-    output_dir,
-    combined_filename,
+    output_dir=None,
+    combined_filename=None,
+    topology_features=None,
+    rotation_model=None,
+    plates_dir=None,
     agegrid_dir=None,
     sedthick_dir=None,
     carbonate_dir=None,
+    co2_dir=None,
     subducted_thickness_dir=None,
     subducted_sediments_dir=None,
     subducted_carbonates_dir=None,
     subducted_water_dir=None,
     verbose=False,
 ):
-    times = range(min_time, max_time + INCREMENT, INCREMENT)
-
     if isinstance(input_data, str):
         if os.path.isdir(input_data):
             input_data = [
@@ -47,43 +52,100 @@ def run_coregister_ocean_rasters(
             for time in times
         ]
 
-    if nprocs == 1:
-        out = [
-            coregister_ocean_rasters(
-                time,
-                input_data_t,
-                plates_dir,
-                agegrid_dir,
-                sedthick_dir,
-                carbonate_dir,
-                output_dir,
-                subducted_thickness_dir,
-                subducted_sediments_dir,
-                subducted_carbonates_dir,
-                subducted_water_dir,
+    if output_dir is not None and not os.path.isdir(output_dir):
+        if verbose:
+            print(
+                "Output directory does not exist; creating now: "
+                + output_dir,
+                file=stderr,
             )
-            for time, input_data_t in zip(times, input_data)
-        ]
+        os.makedirs(output_dir, exist_ok=True)
+
+    if nprocs == 1:
+        out = _run_subset(
+            times=times,
+            dfs=input_data,
+            agegrid_dir=agegrid_dir,
+            sedthick_dir=sedthick_dir,
+            carbonate_dir=carbonate_dir,
+            co2_dir=co2_dir,
+            output_dir=output_dir,
+            topology_features=topology_features,
+            rotation_model=rotation_model,
+            plates_dir=plates_dir,
+            subducted_thickness_dir=subducted_thickness_dir,
+            subducted_sediments_dir=subducted_sediments_dir,
+            subducted_carbonates_dir=subducted_carbonates_dir,
+            subducted_water_dir=subducted_water_dir,
+        )
+        # out = [
+        #     coregister_ocean_rasters(
+        #         time=time,
+        #         df=input_data_t,
+        #         plates_dir=plates_dir,
+        #         agegrid_dir=agegrid_dir,
+        #         sedthick_dir=sedthick_dir,
+        #         carbonate_dir=carbonate_dir,
+        #         co2_dir=co2_dir,
+        #         output_dir=output_dir,
+        #         subducted_thickness_dir=subducted_thickness_dir,
+        #         subducted_sediments_dir=subducted_sediments_dir,
+        #         subducted_carbonates_dir=subducted_carbonates_dir,
+        #         subducted_water_dir=subducted_water_dir,
+        #     )
+        #     for time, input_data_t in zip(times, input_data)
+        # ]
     else:
         from joblib import Parallel, delayed
 
-        p = Parallel(nprocs, verbose=10 * int(verbose))
-        out = p(
-            delayed(coregister_ocean_rasters)(
-                time,
-                input_data_t,
-                plates_dir,
-                agegrid_dir,
-                sedthick_dir,
-                carbonate_dir,
-                output_dir,
-                subducted_thickness_dir,
-                subducted_sediments_dir,
-                subducted_carbonates_dir,
-                subducted_water_dir,
+        times_split = np.array_split(times, nprocs)
+        df_array = np.empty(len(input_data), dtype="object")
+        for i, df in enumerate(input_data):
+            df_array[i] = df
+        input_data_split = np.array_split(df_array, nprocs)
+
+        with Parallel(nprocs, verbose=int(verbose)) as parallel:
+            results = parallel(
+                delayed(_run_subset)(
+                    times=t,
+                    dfs=d,
+                    agegrid_dir=agegrid_dir,
+                    sedthick_dir=sedthick_dir,
+                    carbonate_dir=carbonate_dir,
+                    co2_dir=co2_dir,
+                    output_dir=output_dir,
+                    topology_features=topology_features,
+                    rotation_model=rotation_model,
+                    plates_dir=plates_dir,
+                    subducted_thickness_dir=subducted_thickness_dir,
+                    subducted_sediments_dir=subducted_sediments_dir,
+                    subducted_carbonates_dir=subducted_carbonates_dir,
+                    subducted_water_dir=subducted_water_dir,
+                )
+                for t, d in zip(times_split, input_data_split)
             )
-            for time, input_data_t in zip(times, input_data)
-        )
+        out = []
+        for i in results:
+            out.extend(i)
+
+        # p = Parallel(nprocs, verbose=10 * int(verbose))
+        # out = p(
+        #     delayed(coregister_ocean_rasters)(
+        #         time=time,
+        #         df=input_data_t,
+        #         plates_dir=plates_dir,
+        #         agegrid_dir=agegrid_dir,
+        #         sedthick_dir=sedthick_dir,
+        #         carbonate_dir=carbonate_dir,
+        #         co2_dir=co2_dir,
+        #         output_dir=output_dir,
+        #         subducted_thickness_dir=subducted_thickness_dir,
+        #         subducted_sediments_dir=subducted_sediments_dir,
+        #         subducted_carbonates_dir=subducted_carbonates_dir,
+        #         subducted_water_dir=subducted_water_dir,
+        #     )
+        #     for time, input_data_t in zip(times, input_data)
+        # )
 
     out = pd.concat(out, ignore_index=True)
     if combined_filename is not None:
@@ -91,26 +153,87 @@ def run_coregister_ocean_rasters(
     return out
 
 
-def coregister_ocean_rasters(
-    time,
-    df,
-    plates_dir,
+def _run_subset(
+    times,
+    dfs,
     agegrid_dir,
     sedthick_dir,
     carbonate_dir,
+    co2_dir,
     output_dir,
+    topology_features=None,
+    rotation_model=None,
+    plates_dir=None,
+    **kwargs
+):
+    if plates_dir is None:
+        if not isinstance(topology_features, pygplates.FeatureCollection):
+            topology_features = pygplates.FeatureCollection(
+                pygplates.FeaturesFunctionArgument(
+                    topology_features
+                ).get_features()
+            )
+        if not isinstance(rotation_model, pygplates.RotationModel):
+            rotation_model = pygplates.RotationModel(rotation_model)
+
+    return [
+        coregister_ocean_rasters(
+            time=t,
+            df=df,
+            agegrid_dir=agegrid_dir,
+            sedthick_dir=sedthick_dir,
+            carbonate_dir=carbonate_dir,
+            co2_dir=co2_dir,
+            output_dir=output_dir,
+            topology_features=topology_features,
+            rotation_model=rotation_model,
+            plates_dir=plates_dir,
+            **kwargs,
+        )
+        for t, df in zip(times, dfs)
+    ]
+
+
+def coregister_ocean_rasters(
+    time,
+    df,
+    agegrid_dir,
+    sedthick_dir,
+    carbonate_dir,
+    co2_dir,
+    output_dir,
+    topology_features=None,
+    rotation_model=None,
+    plates_dir=None,
     subducted_thickness_dir=None,
     subducted_sediments_dir=None,
     subducted_carbonates_dir=None,
     subducted_water_dir=None,
+    **kwargs
 ):
-    plates_filename = os.path.join(plates_dir, "plate_ids_{}Ma.nc".format(time))
+    if plates_dir is None:
+        dset = create_plate_map(
+            time=time,
+            topology_features=topology_features,
+            rotation_model=rotation_model,
+            **kwargs,
+        )
+        plates = np.array(dset["plate_id"])
+    else:
+        plates_filename = os.path.join(
+            plates_dir,
+            "plate_ids_{}Ma.nc".format(time),
+        )
+        with xr.open_dataset(plates_filename) as dset:
+            plates = np.array(dset["plate_id"])
+    plates[np.isnan(plates)] = -1
+    plates = plates.astype(np.int_)
 
     if agegrid_dir is None:
         agegrid_filename = None
     else:
         agegrid_filename = os.path.join(
-            agegrid_dir, "seafloor_age_mask_{}.0Ma.nc".format(time)
+            agegrid_dir, "output_{}.0Ma.nc".format(time)
         )
         if not os.path.isfile(agegrid_filename):
             raise FileNotFoundError(
@@ -126,6 +249,18 @@ def coregister_ocean_rasters(
         if not os.path.isfile(sedthick_filename):
             raise FileNotFoundError(
                 "Sediment thickness file not found: " + sedthick_filename
+            )
+
+    if co2_dir is None:
+        co2_filename = None
+    else:
+        co2_filename = os.path.join(
+            co2_dir,
+            "crustal_co2_{}Ma.nc".format(time),
+        )
+        if not os.path.isfile(co2_filename):
+            raise FileNotFoundError(
+                "Crustal CO2 file not found: " + co2_filename
             )
 
     if carbonate_dir is None:
@@ -191,17 +326,15 @@ def coregister_ocean_rasters(
 
     df["seafloor_age (Ma)"] = np.nan
     df["age (Ma)"] = time
-    with xr.open_dataset(plates_filename) as dset:
-        plates = np.array(dset["plate_id"])
-    plates[np.isnan(plates)] = -1
-    plates = plates.astype(np.int_)
 
     raster_data = {}
     for filename, name in zip(
         (
             agegrid_filename,
+            agegrid_filename,
             sedthick_filename,
             carbonate_filename,
+            co2_filename,
             subducted_thickness_filename,
             subducted_sediments_filename,
             subducted_carbonates_filename,
@@ -209,8 +342,10 @@ def coregister_ocean_rasters(
         ),
         (
             "agegrid",
+            "spreadrate",
             "sedthick",
             "carbonate",
+            "co2",
             "subducted_thickness",
             "subducted_sediments",
             "subducted_carbonates",
@@ -221,12 +356,26 @@ def coregister_ocean_rasters(
             continue
         raster_data[name] = {}
         with xr.open_dataset(filename) as dset:
-            raster = np.array(dset["z"])
-            lon = np.array(dset["lon"])
-            lat = np.array(dset["lat"])
+            if name == "agegrid":
+                varname = "seafloor_age"
+            elif name == "spreadrate":
+                varname = "spreading_rate"
+            else:
+                varname = "z"
+            raster = np.array(dset[varname])
+            try:
+                lon = np.array(dset["lon"])
+            except KeyError:
+                lon = np.array(dset["x"])
+            try:
+                lat = np.array(dset["lat"])
+            except KeyError:
+                lat = np.array(dset["y"])
 
         if raster.shape != plates.shape:
-            raster = resize(raster, plates.shape, order=1, mode="wrap")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                raster = resize(raster, plates.shape, order=1, mode="wrap")
             lon = np.linspace(lon.min(), lon.max(), raster.shape[1])
             lat = np.linspace(lat.min(), lat.max(), raster.shape[0])
 
@@ -236,8 +385,10 @@ def coregister_ocean_rasters(
 
     column_names = {
         "agegrid": "seafloor_age (Ma)",
+        "spreadrate": "seafloor_spreading_rate (km/Myr)",
         "sedthick": "sediment_thickness (m)",
         "carbonate": "carbonate_thickness (m)",
+        "co2": "co2_volume (m^3/m^2)",
         "subducted_thickness": "subducted_plate_volume (m)",
         "subducted_sediments": "subducted_sediment_volume (m)",
         "subducted_carbonates": "subducted_carbonates_volume (m)",

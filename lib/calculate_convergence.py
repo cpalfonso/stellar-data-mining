@@ -1,6 +1,7 @@
 import math
 import os
 import warnings
+from sys import stderr
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,15 @@ def run_calculate_convergence(
     output_dir,
     verbose=False,
 ):
+    if not os.path.exists(output_dir):
+        if verbose:
+            print(
+                "Output directory does not exist; creating now: "
+                + output_dir,
+                file=stderr,
+            )
+        os.makedirs(output_dir, exist_ok=True)
+
     if nprocs == 1:
         calculate_convergence(
             min_time=min_time,

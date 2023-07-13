@@ -1,7 +1,11 @@
+from sys import stderr
+
 import numpy as np
 import pandas as pd
+import pygplates
 from gplately import EARTH_RADIUS
 from gplately.tools import plate_isotherm_depth
+from ptt.utils.points_in_polygons import find_polygons
 
 # Water thickness parameters
 AVERAGE_OCEAN_FLOOR_SEDIMENT_SURFACE_POROSITY = 0.66
@@ -41,59 +45,6 @@ def calculate_water_thickness(
         return water_thickness
 
 
-def calculate_slab_dip(df, inplace=False):
-    if not inplace:
-        df = df.copy()
-
-    # Segment lengths in m
-    segment_lengths = (
-        np.deg2rad(np.array(df["arc_segment_length (degrees)"]))
-        * EARTH_RADIUS
-        * 1.0e3
-    )
-    # Rates in m/yr
-    convergence_rates = (
-        np.array(df["convergence_rate_orthogonal (cm/yr)"]) * 1.0e-2
-    )
-    trench_migration_rates = (
-        np.array(df["trench_velocity_orthogonal (cm/yr)"]) * 1.0e-2
-    )
-    subducting_plate_velocities = (
-        np.array(df["subducting_plate_absolute_velocity_orthogonal (cm/yr)"])
-        * 1.0e-2
-    )
-
-    # Only consider positive convergence rates
-    convergence_rates = np.clip(convergence_rates, 0.0, np.inf)
-
-    seafloor_ages = np.array(df["seafloor_age (Ma)"])
-    plate_thicknesses = plate_isotherm_depth(
-        seafloor_ages, temp=PLATE_THICKNESS_ISOTHERM, n=100
-    )
-
-    subduction_volume_rates = (
-        plate_thicknesses * segment_lengths * convergence_rates
-    )
-    subduction_volume_rates *= 1.0e-9  # convert m^3/yr to km^3/yr
-
-    vratio = (convergence_rates + trench_migration_rates) / (
-        np.clip(convergence_rates, 1.0e-22, np.inf)
-    )
-    vratio[subducting_plate_velocities < 0.0] *= -1.0
-    vratio = np.clip(vratio, 0.0, 1.0)
-
-    slab_dips = (
-        SLAB_DIP_COEFF_A * (convergence_rates * vratio) * plate_thicknesses
-        + SLAB_DIP_COEFF_B
-    )
-    arc_distances = ARC_DEPTH / np.tan(np.deg2rad(slab_dips))
-
-    df["slab_dip (degrees)"] = slab_dips
-    df["arc_trench_distance (km)"] = arc_distances
-
-    return df
-
-
 def calculate_slab_flux(df, inplace=False):
     if not inplace:
         df = df.copy()
@@ -107,3 +58,141 @@ def calculate_slab_flux(df, inplace=False):
     slab_flux = rates * thicknesses
     df["slab_flux (m^2/yr)"] = slab_flux
     return df
+
+
+def reconstruct_by_topologies(
+    topological_features,
+    rotation_model,
+    points,
+    start_time,
+    end_time,
+    time_step=1.0,
+    verbose=False,
+    intermediate_steps=False,
+):
+    """Simple and efficient reconstruction by topologies (does not account for
+    collisions).
+    """
+    topological_features = pygplates.FeaturesFunctionArgument(
+        topological_features
+    ).get_features()
+    rotation_model = pygplates.RotationModel(rotation_model)
+
+    if (
+        (start_time > end_time and time_step > 0.0)
+        or (start_time < end_time and time_step < 0.0)
+    ):
+        time_step = time_step * -1.0
+
+    array_input = isinstance(points, np.ndarray)
+    try:
+        points = pygplates.PointOnSphere(points)
+    except Exception:
+        pass
+    mp = pygplates.MultiPointOnSphere(points)
+    points = list(mp.get_points())
+
+    times = np.arange(start_time, end_time + time_step, time_step)
+    if intermediate_steps:
+        if array_input:
+            step_p = np.vstack(
+                [
+                    np.reshape(i.to_lat_lon_array(), (1, -1))
+                    for i in points
+                ]
+            )
+        else:
+            step_p = points
+        step_points = [step_p]
+    if verbose:
+        print(
+            "Reconstructing by topologies from {} Ma to {} Ma".format(
+                start_time, end_time,
+            ),
+            file=stderr,
+        )
+    for time_index, new_time in enumerate(times):
+        if time_index == 0:
+            continue
+        if verbose:
+            print("Time now: {} Ma".format(new_time), file=stderr)
+        previous_time = float(times[time_index - 1])
+        new_time = float(new_time)
+        new_points = _reconstruct_timestep(
+            points,
+            previous_time,
+            new_time,
+            topological_features,
+            rotation_model,
+        )
+        points = new_points
+        if intermediate_steps:
+            if array_input:
+                step_p = np.vstack(
+                    [
+                        np.reshape(i.to_lat_lon_array(), (1, -1))
+                        for i in points
+                    ]
+                )
+            else:
+                step_p = points
+            step_points.append(step_p)
+            del step_p
+        del new_points
+
+    if array_input:
+        points = np.vstack(
+            [
+                np.reshape(i.to_lat_lon_array(), (1, -1))
+                for i in points
+            ]
+        )
+    if intermediate_steps:
+        return times, step_points
+    return points
+
+
+def _reconstruct_timestep(
+    points,
+    previous_time,
+    new_time,
+    topological_features,
+    rotation_model,
+):
+    topologies = []
+    pygplates.resolve_topologies(
+        topological_features,
+        rotation_model,
+        topologies,
+        previous_time,
+    )
+    polygon_plate_ids = [
+        i.get_feature().get_reconstruction_plate_id() for i in topologies
+    ]
+    topological_polygons = [
+        i.get_resolved_geometry() for i in topologies
+    ]
+    point_plate_ids = find_polygons(
+        points,
+        topological_polygons,
+        polygon_plate_ids,
+    )
+    rotations_dict = {
+        None: pygplates.FiniteRotation.create_identity_rotation()
+    }
+    for i in point_plate_ids:
+        if i in rotations_dict or i is None:
+            continue
+        rot = rotation_model.get_rotation(
+            to_time=new_time,
+            from_time=previous_time,
+            moving_plate_id=i,
+            use_identity_for_missing_plate_ids=True,
+        )
+        rotations_dict[i] = rot
+    new_points = []
+    for point, plate_id in zip(points, point_plate_ids):
+        rot = rotations_dict[plate_id]
+        new_point = rot * point
+        new_points.append(new_point)
+    return new_points
