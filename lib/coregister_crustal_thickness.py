@@ -28,7 +28,11 @@ def run_coregister_crustal_thickness(
         )
 
     out = pd.DataFrame(pd.concat(out, ignore_index=True))
-    out = out.sort_values(by=["label", "age (Ma)"], ignore_index=True)
+    if "label" in out.columns:
+        sort_by = ["label", "age (Ma)"]
+    else:
+        sort_by = "age (Ma)"
+    out = out.sort_values(by=sort_by, ignore_index=True)
     return out
 
 

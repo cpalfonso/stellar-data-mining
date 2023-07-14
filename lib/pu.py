@@ -1,8 +1,11 @@
 import os
+from multiprocessing import cpu_count
 from sys import stderr
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pygplates
 import xarray as xr
 from joblib import (
     Parallel,
@@ -10,6 +13,7 @@ from joblib import (
     dump,
 )
 from pulearn import BaggingPuClassifier
+from shapely.geometry import MultiPoint
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import (
     AdaBoostClassifier,
@@ -17,6 +21,8 @@ from sklearn.ensemble import (
     RandomForestClassifier,
 )
 from xgboost import XGBClassifier
+
+from .misc import reconstruct_by_topologies
 
 COLUMNS_TO_DROP = {
     "present_lon",
@@ -206,39 +212,205 @@ def calculate_feature_importances(classifier):
     return importances
 
 
-def calculate_probabilities(point_data, classifier):
-    point_data = point_data.copy()
+def generate_grid_points(
+    times,
+    resolution,
+    polygons_dir,
+    topological_features=None,
+    rotation_model=None,
+    n_jobs=1,
+    verbose=False,
+):
+    if n_jobs is None:
+        n_jobs = 1
+    n_jobs = int(n_jobs)
+    if n_jobs == 0:
+        raise ValueError("n_jobs must not be zero")
+    elif n_jobs < 0:
+        n_jobs = cpu_count() + n_jobs + 1
 
-    features = []
-    for column in sorted(point_data.columns.values):
-        if column in (
-            "lon",
-            "lat",
-            "present_lon",
-            "present_lat",
-            "age (Ma)",
-        ):
-            continue
-        arr = np.array(point_data[column]).reshape((-1, 1))
-        features.append(arr)
-    x = np.hstack(features)
+    # Earlier times take longer to reconstruct, so ensure they are
+    # evenly split between processes
+    times = np.array(times)
+    times_split = [
+        times[i::n_jobs]
+        for i in range(n_jobs)
+    ]
 
-    try:
-        probs = classifier.predict_proba(x)[:, 1].flatten()
-    except ValueError as err:
-        for i in (
-            set(point_data.columns.values).difference(
-                {
-                    "lon",
-                    "lat",
-                    "present_lon",
-                    "present_lat",
-                    "age (Ma)",
-                }
+    with Parallel(n_jobs, verbose=int(verbose)) as parallel:
+        out = parallel(
+            delayed(_grid_points_subset)(
+                times=t,
+                resolution=resolution,
+                polygons_dir=polygons_dir,
+                topological_features=topological_features,
+                rotation_model=rotation_model,
+                verbose=verbose,
             )
-        ):
-            print(i)
-        raise err
+            for t in times_split
+        )
+    out = pd.concat(out, ignore_index=True)
+    out = out.drop(columns="index", errors="ignore")
+    return out
+
+
+def _grid_points_subset(
+    times,
+    resolution,
+    polygons_dir,
+    topological_features=None,
+    rotation_model=None,
+    verbose=False,
+):
+    if (
+        topological_features is not None
+        and not isinstance(
+            topological_features,
+            pygplates.FeatureCollection,
+        )
+    ):
+        topological_features = pygplates.FeatureCollection(
+            pygplates.FeaturesFunctionArgument(
+                topological_features
+            ).get_features()
+        )
+    if (
+        rotation_model is not None
+        and not isinstance(
+            rotation_model,
+            pygplates.RotationModel,
+        )
+    ):
+        rotation_model = pygplates.RotationModel(rotation_model)
+
+    out = [
+        _grid_points_time(
+            time=t,
+            resolution=resolution,
+            polygons_dir=polygons_dir,
+            topological_features=topological_features,
+            rotation_model=rotation_model,
+            verbose=verbose,
+        )
+        for t in times
+    ]
+    out = pd.concat(out, ignore_index=True)
+    return out
+
+
+def _grid_points_time(
+    time,
+    resolution,
+    polygons_dir,
+    topological_features=None,
+    rotation_model=None,
+    verbose=False,
+):
+    if (
+        topological_features is not None
+        and not isinstance(
+            topological_features,
+            pygplates.FeatureCollection,
+        )
+    ):
+        topological_features = pygplates.FeatureCollection(
+            pygplates.FeaturesFunctionArgument(
+                topological_features
+            ).get_features()
+        )
+    if (
+        rotation_model is not None
+        and not isinstance(
+            rotation_model,
+            pygplates.RotationModel,
+        )
+    ):
+        rotation_model = pygplates.RotationModel(rotation_model)
+
+    polygons_filename = os.path.join(
+        polygons_dir, f"study_area_{time:0.0f}Ma.shp"
+    )
+    gdf = gpd.read_file(polygons_filename)
+    polygons = gdf.geometry
+    minx, miny, maxx, maxy = polygons.total_bounds
+
+    minx = (int(minx / resolution) - 1) * resolution
+    maxx = (int(maxx / resolution) + 1) * resolution
+    miny = (int(miny / resolution) - 1) * resolution
+    maxy = (int(maxy / resolution) + 1) * resolution
+
+    lons = np.arange(minx, maxx + resolution, resolution)
+    lats = np.arange(miny, maxy + resolution, resolution)
+
+    mlons, mlats = np.meshgrid(lons, lats)
+    mlons = mlons.reshape((-1, 1))
+    mlats = mlats.reshape((-1, 1))
+    coords = np.column_stack((mlons, mlats))
+    mp = MultiPoint(coords)
+
+    intersection = polygons.unary_union.intersection(mp)
+    intersection_coords = np.row_stack([i.coords for i in intersection.geoms])
+    plons = intersection_coords[:, 0]
+    plats = intersection_coords[:, 1]
+
+    if time == 0.0:
+        present_lons = np.array(plons)
+        present_lats = np.array(plats)
+    elif topological_features is None or rotation_model is None:
+        present_lats = np.full_like(plats, np.nan)
+        present_lons = np.full_like(plons, np.nan)
+    else:
+        present_day_coords = reconstruct_by_topologies(
+            topological_features,
+            rotation_model,
+            np.fliplr(intersection_coords),
+            start_time=float(time),
+            end_time=0.0,
+            time_step=1.0,
+        )
+        present_lats = present_day_coords[:, 0]
+        present_lons = present_day_coords[:, 1]
+
+    out = pd.DataFrame(
+        {
+            "lon": plons,
+            "lat": plats,
+            "present_lon": present_lons,
+            "present_lat": present_lats,
+            "age (Ma)": time,
+        }
+    )
+    return out
+
+
+def calculate_probabilities(
+    point_data,
+    classifier,
+    remove_correlated=True,
+    remove_cumulative=False,
+    remove_preservation=True,
+    label="label",
+):
+    try:
+        point_data = pd.read_csv(point_data)
+    except Exception:
+        point_data = pd.DataFrame(point_data)
+
+    to_drop = COLUMNS_TO_DROP.copy()
+    to_drop.add(label)
+    if remove_correlated:
+        to_drop = to_drop.union(CORRELATED_COLUMNS)
+    if remove_cumulative:
+        to_drop = to_drop.union(CUMULATIVE_COLUMNS)
+    if remove_preservation:
+        to_drop = to_drop.union(PRESERVATION_COLUMNS)
+
+    point_data = point_data.sort_index(axis="columns")
+    point_data = point_data.drop(columns=list(to_drop), errors="ignore")
+    point_data = point_data.dropna()
+    x = np.array(point_data)
+
+    probs = classifier.predict_proba(x)[:, 1].flatten()
 
     lons = np.array(point_data["lon"])
     lats = np.array(point_data["lat"])

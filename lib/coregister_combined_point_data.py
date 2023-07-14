@@ -52,7 +52,11 @@ def run_coregister_combined_point_data(
     out = pd.DataFrame(pd.concat(out, ignore_index=True))
 
     out = out.drop(columns="index", errors="ignore")
-    out = out.sort_values(by=["label", "age (Ma)"])
+    if "label" in out.columns:
+        sort_by = ["label", "age (Ma)"]
+    else:
+        sort_by = "age (Ma)"
+    out = out.sort_values(by=sort_by, ignore_index=True)
     if output_filename is not None:
         output_dir = os.path.dirname(os.path.abspath(output_filename))
         if not os.path.isdir(output_dir):
