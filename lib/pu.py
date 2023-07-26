@@ -404,17 +404,24 @@ def calculate_probabilities(
         to_drop = to_drop.union(CUMULATIVE_COLUMNS)
     if remove_preservation:
         to_drop = to_drop.union(PRESERVATION_COLUMNS)
+    to_drop = to_drop.difference(
+        {
+            "lon",
+            "lat",
+            "age (Ma)",
+        }
+    )
 
     point_data = point_data.sort_index(axis="columns")
     point_data = point_data.drop(columns=list(to_drop), errors="ignore")
     point_data = point_data.dropna()
-    x = np.array(point_data)
-
-    probs = classifier.predict_proba(x)[:, 1].flatten()
-
     lons = np.array(point_data["lon"])
     lats = np.array(point_data["lat"])
     ages = np.array(point_data["age (Ma)"])
+    x = np.array(
+        point_data.drop(columns=["lon", "lat", "age (Ma)"], errors="ignore")
+    )
+    probs = classifier.predict_proba(x)[:, 1].flatten()
     out = pd.DataFrame(
         {
             "lon": lons,

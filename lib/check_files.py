@@ -7,7 +7,7 @@ import requests
 from tqdm import tqdm
 
 DIRNAME = os.path.abspath(os.path.dirname(__file__))
-DEFAULT_PREPARED_DATA_DIR = os.path.join(DIRNAME, ".." , "prepared_data")
+DEFAULT_PREPARED_DATA_DIR = os.path.join(DIRNAME, "..", "prepared_data")
 DEFAULT_MODEL_DIR = os.path.join(DIRNAME, "..", "plate_model")
 DEFAULT_SOURCE_DATA_DIR = os.path.join(DIRNAME, "..", "data")
 
@@ -20,6 +20,7 @@ _SOURCE_DATA_URL = f"{_ZENODO_URL}/files/source_data.zip"
 def check_prepared_data(data_dir=None, verbose=False, force=False):
     if data_dir is None:
         data_dir = DEFAULT_PREPARED_DATA_DIR
+    data_dir = os.path.abspath(data_dir)
 
     if force or (not os.path.isdir(data_dir)):
         if verbose:
@@ -30,7 +31,7 @@ def check_prepared_data(data_dir=None, verbose=False, force=False):
             )
         _download_extract(
             url=_PREPARED_DATA_URL,
-            extract_dir=data_dir,
+            extract_dir=os.path.dirname(data_dir),
             verbose=verbose,
         )
     return data_dir
@@ -39,6 +40,7 @@ def check_prepared_data(data_dir=None, verbose=False, force=False):
 def check_source_data(data_dir=None, verbose=False, force=False):
     if data_dir is None:
         data_dir = DEFAULT_SOURCE_DATA_DIR
+    data_dir = os.path.abspath(data_dir)
 
     if force or (not os.path.isdir(data_dir)):
         if verbose:
@@ -49,7 +51,7 @@ def check_source_data(data_dir=None, verbose=False, force=False):
             )
         _download_extract(
             url=_SOURCE_DATA_URL,
-            extract_dir=data_dir,
+            extract_dir=os.path.dirname(data_dir),
             verbose=verbose,
         )
     return data_dir
@@ -58,6 +60,7 @@ def check_source_data(data_dir=None, verbose=False, force=False):
 def check_plate_model(model_dir=None, verbose=False, force=False):
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
+    model_dir = os.path.abspath(model_dir)
 
     if force or (not os.path.isdir(model_dir)):
         if verbose:
@@ -68,7 +71,7 @@ def check_plate_model(model_dir=None, verbose=False, force=False):
             )
         _download_extract(
             url=_MODEL_URL,
-            extract_dir=model_dir,
+            extract_dir=os.path.dirname(model_dir),
             verbose=verbose,
         )
     return model_dir
@@ -119,5 +122,6 @@ def _fetch_data(url, download_dir, filename=None, verbose=False):
 
 
 if __name__ == "__main__":
+    check_prepared_data(verbose=True)
     check_source_data(verbose=True)
     check_plate_model(verbose=True)
