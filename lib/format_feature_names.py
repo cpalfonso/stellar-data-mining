@@ -1,5 +1,5 @@
 def format_feature_name(s):
-    """Make feature names a bit easier to read in plots."""
+    """Make feature names easier to read in plots."""
     s = s.replace("_", " ")
     s = s[0].capitalize() + s[1:]
 

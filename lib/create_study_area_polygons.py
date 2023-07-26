@@ -1,3 +1,6 @@
+"""Functions to create time-dependent study area polygons along subduction
+zones.
+"""
 import os
 import warnings
 from sys import stderr
@@ -34,6 +37,32 @@ def run_create_study_area_polygons(
     verbose=False,
     return_output=False,
 ):
+    """Create study area polygons at the given times.
+
+    Parameters
+    ----------
+    nprocs : int
+        Number of processes to use.
+    times : sequence of float
+        Times at which to extract study area.
+    topological_features : FeatureCollection
+        Topological features for plate reconstruction.
+    rotation_model : RotationModel
+        Rotation model for plate reconstruction.
+    output_dir : str
+        Write output shapefiles to this directory.
+    buffer_distance : float, default: 6.0
+        Width of subduction zone study area (arc degrees).
+    verbose : bool, default: False
+        Print log to stderr.
+    return_output : bool, default: False
+        Return output (in GeoDataFrame format).
+
+    Returns
+    -------
+    sequence of GeoDataFrame
+        The subduction zone polygons (if `return_output = True`).
+    """
     if output_dir is not None and not os.path.isdir(output_dir):
         if verbose:
             print(
@@ -104,6 +133,28 @@ def create_study_area_polygons(
     buffer_distance=DEFAULT_SZ_BUFFER_DISTANCE,
     return_output=False,
 ):
+    """Create study area polygons at a given time.
+
+    Parameters
+    ----------
+    time : float
+        Time at which to extract study area.
+    topological_features : FeatureCollection
+        Topological features for plate reconstruction.
+    rotation_model : RotationModel
+        Rotation model for plate reconstruction.
+    output_dir : str
+        Write output shapefile to this directory.
+    buffer_distance : float, default: 6.0
+        Width of subduction zone study area (arc degrees).
+    return_output : bool, default: False
+        Return output (in GeoDataFrame format).
+
+    Returns
+    -------
+    GeoDataFrame
+        The subduction zone polygons (if `return_output = True`).
+    """
     if not isinstance(topological_features, pygplates.FeatureCollection):
         topological_features = pygplates.FeatureCollection(
             pygplates.FeaturesFunctionArgument(

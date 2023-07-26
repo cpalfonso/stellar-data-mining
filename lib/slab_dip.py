@@ -1,3 +1,4 @@
+"""Wrapper around slabdip.predictor.SlabDipper."""
 import warnings
 
 import numpy as np
@@ -30,6 +31,23 @@ def calculate_slab_dip(
     predictors=DEFAULT_VARIABLES,
     response="slab_dip",
 ):
+    """Calculate slab dip using SlabDipper.
+
+    Parameters
+    ----------
+    data : str or pandas.DataFrame
+        Subduction zone data to calculate slab dip.
+    training_data : optional
+    model : optional
+    predictors : optional
+    response : optional
+
+    Returns
+    -------
+    pandas.DataFrame
+        Copy of `data` with two additional columns: 'slab_dip (degrees)' and
+        'arc_trench_distance (km)'.
+    """
     if isinstance(data, str):
         data = pd.read_csv(data)
     else:

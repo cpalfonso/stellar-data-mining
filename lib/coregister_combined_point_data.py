@@ -1,3 +1,6 @@
+"""Functions to join deposit and unlabelled point data to subduction
+zone kinematics data.
+"""
 import os
 from sys import stderr
 
@@ -15,6 +18,26 @@ def run_coregister_combined_point_data(
     n_jobs=1,
     verbose=False,
 ):
+    """Join point data to subduction zone data.
+
+    Parameters
+    ----------
+    point_data : str or DataFrame
+        Point dataset.
+    subduction_data : str or DataFrame
+        Subduction zone dataset.
+    output_filename : str, optional
+        If provided, write the joined data to a CSV file.
+    n_jobs : int
+        Number of processes to use.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
     if isinstance(point_data, str):
         if verbose:
             print(
@@ -78,6 +101,16 @@ def run_coregister_combined_point_data(
 
 
 def coregister_combined_point_data(time, points, szs):
+    """Coregister datasets at a give time.
+
+    Parameters
+    ----------
+    time : float
+    points : DataFrame
+        Point dataset.
+    szs : DataFrame
+        Subduction zone dataset.
+    """
     points = points.copy()
     szs = szs.copy().reset_index()
 

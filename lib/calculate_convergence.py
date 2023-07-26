@@ -1,3 +1,6 @@
+"""This module contains a simple wrapper around the subduction convergence
+workflow from PlateTectonicTools, allowing for parallelisation.
+"""
 import math
 import os
 import warnings
@@ -19,6 +22,23 @@ def run_calculate_convergence(
     output_dir,
     verbose=False,
 ):
+    """Wrapper to call `calculate_convergence` in parallel.
+
+    Parameters
+    ----------
+    nprocs : int
+        Number of processes to use.
+    min_time, max_time : float
+        Minimum and maximum time steps to extract convergence data.
+    topology_filenames : sequence of str
+        Files containing topological features.
+    rotation_filenames : sequence of str
+        Files containing rotation features.
+    output_dir : str
+        Output directory to save convergence data .csv files.
+    verbose : bool, default: False
+        Print log to stderr.
+    """
     if not os.path.exists(output_dir):
         if verbose:
             print(
@@ -67,6 +87,20 @@ def calculate_convergence(
     rotation_filenames,
     output_dir,
 ):
+    """Wrapper around `subduction_convergence_over_time` from
+    PlateTectonicTools that also adds column names to the output files.
+
+    Parameters
+    ----------
+    min_time, max_time : float
+        Minimum and maximum time steps to extract convergence data.
+    topology_filenames : sequence of str
+        Files containing topological features.
+    rotation_filenames : sequence of str
+        Files containing rotation features.
+    output_dir : str
+        Output directory to save convergence data .csv files.
+    """
     output_prefix = os.path.join(output_dir, "convergence")
     output_extension = "csv"
 

@@ -1,3 +1,4 @@
+"""Functions to perform cross-validation of models."""
 import time
 from sys import stderr
 
@@ -43,13 +44,50 @@ def perform_cv(
     thresh_method=None,
     label="label",
 ):
-    if isinstance(data, pd.DataFrame):
-        data = pd.DataFrame(data)
+    """Perform cross-validation.
+
+    Parameters
+    ----------
+    clf : classification estimator
+    data : str or DataFrame
+        The training/test data to use.
+    cv : cross-validator object, optional
+        Scikit-learn cross-validator to use. If none is provided,
+        a shuffled StratifiedKFold with 5 splits will be used.
+    thresh : float or "auto", default: 0.5
+        Probability threshold for classification. "auto" means
+        the optimal threshold will be determined automatically, using the
+        method specified in `thresh_method`.
+    random_state : int, optional
+        Seed for random number generation.
+    pu : bool, default: True
+        Whether `clf` is a positive-unlabelled classifier.
+    separate_regions : bool, default: True
+        Calculate test scores on different regions separately.
+    stratify : array_like or str, optional
+        The array or column name to use for stratification. By default,
+        `data[label]` will be used.
+    verbose : bool, default: False
+        Print log to stderr.
+    get_xy_kw : dict, optional
+        Keyword arguments to be passed to `lib.pu.get_xy`.
+    return_models : bool, default: False
+        Include trained model objects in output.
+    thresh_method : {"balanced_accuracy", "accuracy", "f1"}, default: "f1"
+        Method used to determine optimal probability threshold if
+        `thresh == "auto"`.
+    label : str, default: "label"
+        Label column of `data`.
+
+    Returns
+    -------
+    DataFrame
+        Performance metrics and statistics for each cross-validation split.
+    """
+    if isinstance(data, str):
+        data = pd.read_csv(data)
     else:
-        try:
-            data = pd.read_csv(data)
-        except Exception:
-            data = pd.DataFrame(data)
+        data = pd.DataFrame(data)
 
     if cv is None:
         cv = StratifiedKFold(

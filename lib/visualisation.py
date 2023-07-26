@@ -1,3 +1,4 @@
+"""Functions for creating plots of prospectivity maps."""
 import cartopy.crs as ccrs
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -65,6 +66,31 @@ def plot(
     output_filename=None,
     central_meridian=0.0,
 ):
+    """Create plot of probability raster grid.
+
+    Parameters
+    ----------
+    gplot : gplately.PlotTopologies or dict
+        PlotTopologies object, or dictionary containing all necessary
+        keywoard arguments to create a PlotTopologies object.
+    probabilities : gplately.Raster
+        Probability raster grid.
+    projection : str or cartopy.crs.Projection, default: "mollweide"
+        Map projection to use.
+    time : float
+        Timestep to plot.
+    positives : str or pandas.DataFrame
+        Data frame containing known positive observations, for plotting on
+        the map.
+    output_filename : str, optional
+        If provided, save image to this filename.
+    central_meridian : float, default: 0.0
+        Central meridian of map projection.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     if not isinstance(gplot, PlotTopologies):
         gplot = _get_gplot(**gplot)
 
@@ -72,11 +98,10 @@ def plot(
         gplot.time = time
 
     if positives is not None:
-        if not isinstance(positives, pd.DataFrame):
-            try:
-                positives = pd.read_csv(positives)
-            except Exception:
-                positives = pd.DataFrame(positives)
+        if isinstance(positives, str):
+            positives = pd.read_csv(positives)
+        else:
+            positives = pd.DataFrame(positives)
         # Restrict to positives only
         positives = positives[positives["label"] == "positive"]
         if time is not None:

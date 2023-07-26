@@ -1,3 +1,6 @@
+"""Functions to join subduction zone kinematic data to
+time-dependent ocean plate raster data.
+"""
 import os
 import warnings
 from sys import stderr
@@ -33,6 +36,51 @@ def run_coregister_ocean_rasters(
     subducted_water_dir=None,
     verbose=False,
 ):
+    """Join time-dependent subduction zone data to raster data.
+
+    Parameters
+    ----------
+    times : sequence of float.
+        The time steps of the data.
+    input_data : str or DataFrame
+        The input subduction zone data.
+    output_dir : str, optional
+        If provided, write joined data to CSV files in this directory.
+    combined_filename : str, optional
+        If provided, write combined joined data to this CSV file.
+    topology_features : FeatureCollection, optional
+        Topological features used to restrict raster data to
+        downgoing plate only.
+    rotation_model : RotationModel, optional
+        Rotation model used to restrict raster data to
+        downgoing plate only.
+    plates_dir : str, optional
+        Directory containing rasterised topological plate maps (required if
+        `topology_features` and `rotation_model` are not provided).
+    agegrid_dir : str, optional
+        Directory containing seafloor age raster data.
+    sedthick_dir : str, optional
+        Directory containing sediment thickness raster data.
+    carbonate_dir : str, optional
+        Directory containing carbonate thickness raster data.
+    co2_dir : str, optional
+        Directory containing C02 thickness raster data.
+    subducted_thickness_dir : str, optional
+        Directory containing cumulative subducted plate thickness raster data.
+    subducted_sediments_dir : str, optional
+        Directory containing cumulative subducted sediment raster data.
+    subducted_carbonates_dir : str, optional
+        Directory containing cumulative subducted carbonates raster data.
+    subducted_water_dir : str, optional
+        Directory containing cumulative subducted water raster data.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
     if isinstance(input_data, str):
         if os.path.isdir(input_data):
             input_data = [
@@ -78,23 +126,6 @@ def run_coregister_ocean_rasters(
             subducted_carbonates_dir=subducted_carbonates_dir,
             subducted_water_dir=subducted_water_dir,
         )
-        # out = [
-        #     coregister_ocean_rasters(
-        #         time=time,
-        #         df=input_data_t,
-        #         plates_dir=plates_dir,
-        #         agegrid_dir=agegrid_dir,
-        #         sedthick_dir=sedthick_dir,
-        #         carbonate_dir=carbonate_dir,
-        #         co2_dir=co2_dir,
-        #         output_dir=output_dir,
-        #         subducted_thickness_dir=subducted_thickness_dir,
-        #         subducted_sediments_dir=subducted_sediments_dir,
-        #         subducted_carbonates_dir=subducted_carbonates_dir,
-        #         subducted_water_dir=subducted_water_dir,
-        #     )
-        #     for time, input_data_t in zip(times, input_data)
-        # ]
     else:
         from joblib import Parallel, delayed
 
@@ -127,25 +158,6 @@ def run_coregister_ocean_rasters(
         out = []
         for i in results:
             out.extend(i)
-
-        # p = Parallel(nprocs, verbose=10 * int(verbose))
-        # out = p(
-        #     delayed(coregister_ocean_rasters)(
-        #         time=time,
-        #         df=input_data_t,
-        #         plates_dir=plates_dir,
-        #         agegrid_dir=agegrid_dir,
-        #         sedthick_dir=sedthick_dir,
-        #         carbonate_dir=carbonate_dir,
-        #         co2_dir=co2_dir,
-        #         output_dir=output_dir,
-        #         subducted_thickness_dir=subducted_thickness_dir,
-        #         subducted_sediments_dir=subducted_sediments_dir,
-        #         subducted_carbonates_dir=subducted_carbonates_dir,
-        #         subducted_water_dir=subducted_water_dir,
-        #     )
-        #     for time, input_data_t in zip(times, input_data)
-        # )
 
     out = pd.concat(out, ignore_index=True)
     if combined_filename is not None:
@@ -211,6 +223,54 @@ def coregister_ocean_rasters(
     subducted_water_dir=None,
     **kwargs
 ):
+    """Join subduction zone data to raster data.
+
+    Parameters
+    ----------
+    time : float
+        The time step of the data.
+    df : str or DataFrame
+        The input subduction zone data.
+    agegrid_dir : str
+        Directory containing seafloor age raster data.
+    sedthick_dir : str
+        Directory containing sediment thickness raster data.
+    carbonate_dir : str
+        Directory containing carbonate thickness raster data.
+    co2_dir : str
+        Directory containing C02 thickness raster data.
+    output_dir : str, optional
+        If provided, write joined data to a CSV file in this directory.
+    topology_features : FeatureCollection, optional
+        Topological features used to restrict raster data to
+        downgoing plate only.
+    rotation_model : RotationModel, optional
+        Rotation model used to restrict raster data to
+        downgoing plate only.
+    plates_dir : str, optional
+        Directory containing rasterised topological plate maps (required if
+        `topology_features` and `rotation_model` are not provided).
+    subducted_thickness_dir : str, optional
+        Directory containing cumulative subducted plate thickness raster data.
+    subducted_sediments_dir : str, optional
+        Directory containing cumulative subducted sediment raster data.
+    subducted_carbonates_dir : str, optional
+        Directory containing cumulative subducted carbonates raster data.
+    subducted_water_dir : str, optional
+        Directory containing cumulative subducted water raster data.
+    **kwargs : dict
+        Any further keyword arguments are passed along to create_plate_map.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
+    if isinstance(df, str):
+        df = pd.read_csv(df)
+    else:
+        df = pd.DataFrame(df)
+
     if plates_dir is None:
         dset = create_plate_map(
             time=time,

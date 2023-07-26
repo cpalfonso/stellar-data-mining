@@ -1,3 +1,4 @@
+"""Functions to generate random unlabelled points for PU model training."""
 import concurrent.futures
 import os
 from sys import stderr
@@ -31,6 +32,34 @@ def generate_unlabelled_points(
     rotation_model=None,
     verbose=False,
 ):
+    """Generate uniformly-distributed points on the unit sphere.
+
+    Parameters
+    ----------
+    times : sequence of float
+        Times at which to generate points.
+    input_dir : str
+        Directory containing subduction zone study area polygons.
+    num : int
+        Number of points to generate per timestep.
+    threads: int, default: 1
+        Number of threads to use.
+    output_filename : str, optional
+        If provided, write output data to this CSV file.
+    seed: int, optional
+        Seed for random number generator.
+    topological_features : FeatureCollection, optional
+        Topological features used to reconstruct present-day coordinates.
+    rotation_model : RotationModel, optional
+        Rotation model used to reconstruct present-day coordinates.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    output : pandas.DataFrame
+        Randomly-generated unlabelled data points.
+    """
     seq = np.random.SeedSequence(entropy=seed)
     rngs = [np.random.default_rng(i) for i in seq.spawn(threads)]
     times_split = np.array_split(times, threads)
@@ -189,7 +218,27 @@ def _generate_points_timestep(
 def generate_points(
     n=1, output_format="radians", order="lonlat", threads=1, rng=None
 ):
-    """Generate uniformly-distributed points on the unit sphere."""
+    """Generate uniformly-distributed points on the unit sphere.
+
+    Parameters
+    ----------
+    n : int, default: 1
+        Number of points to generate.
+    output_format : {'radians', 'degrees', 'xyz'}, default: 'radians'
+        Output format (determines shape of `output` array).
+    order : {'lonlat', 'latlon'}, default: 'lonlat'
+        Output coordinate order (ignored if `output_format = 'xyz'`).
+    threads: int, default: 1
+        Number of threads to use.
+    rng: numpy.random.Generator, optional
+        Random number generator to use.
+
+    Returns
+    -------
+    output : numpy.ndarray
+        Generated coordinates. If `output_format == 'xyz'`, `output` will have
+        shape `(n, 3)`. Otherwise, it will have shape `(n, 2)`.
+    """
     valid_output_formats = {
         "radians",
         "degrees",

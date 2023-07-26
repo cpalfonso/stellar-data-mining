@@ -1,3 +1,4 @@
+"""Functions for training ML models and preparing training data."""
 import os
 from multiprocessing import cpu_count
 from sys import stderr
@@ -94,6 +95,7 @@ DIRNAME = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_TRAINING_FILENAME = os.path.join(
     DIRNAME,
     "..",
+    "prepared_data",
     "training_data.csv",
 )
 _OUTDIR = os.path.join(DIRNAME, "..", "outputs")
@@ -115,10 +117,43 @@ def create_classifier(
     label="label",
     fit=True,
     pu_kwargs=None,
-    preservation=False,
     remove_correlated=True,
     remove_cumulative=False,
 ):
+    """Create and (optionally) train a PU classifier.
+
+    Parameters
+    ----------
+    training_data : str or pandas.DataFrame
+        Data frame containing training data.
+    base_classifier : str or scikit-learn estimator, default: 'randomforest'
+        Base classifier to use for BaggingPuClassifier. Valid string options
+        are: 'randomforest', 'gradientboosting', 'adaboost', and 'xgboost'.
+    random_state : int, optional
+        Seed for random number generator.
+    threads : int, default: 1
+        Number of processes to use.
+    return_arrays : bool, default: False
+        Return arrays used to train model (X and y).
+    label : str, default: 'label'
+        Column name containing labels ('y').
+    fit : bool, default: True
+        Train the classifier on the provided data.
+    pu_kwargs : dict, optional
+        Additional keyword arguments to pass to BaggingPuClassifier.
+    remove_correlated : bool, default: True
+        Remove correlated columns from training data.
+    remove_cumulative : bool, default: False
+        Remove cumulative subducted quantities columns from training data.
+
+    Returns
+    -------
+    classifier : BaggingPuClassifier
+        The PU classifier (trained if `fit == True`).
+    x, y : numpy.ndarray (if `return_arrays == True`)
+        x and y are ndarrays of shape (n, m) and (n,), respectively, where
+        n is the number of samples and m is the number of features.
+    """
     random_state = np.random.default_rng(random_state)
 
     if not isinstance(base_classifier, BaseEstimator):
@@ -133,7 +168,6 @@ def create_classifier(
         label=label,
         remove_correlated=remove_correlated,
         remove_cumulative=remove_cumulative,
-        remove_preservation=(not preservation),
     )
 
     n_estimators = pu_kwargs.pop("n_estimators", 250)
@@ -159,21 +193,37 @@ def get_xy(
     label="label",
     remove_correlated=True,
     remove_cumulative=False,
-    remove_preservation=True,
 ):
-    if not isinstance(data, pd.DataFrame):
-        try:
-            data = pd.read_csv(data)
-        except Exception:
-            data = pd.DataFrame(data)
+    """Extract training X and y arrays from data frame.
+
+    Parameters
+    ----------
+    data : str or pandas.DataFrame
+        Data frame containing training data.
+    label : str, default: 'label'
+        Column name containing labels ('y').
+    remove_correlated : bool, default: True
+        Remove correlated columns from training data.
+    remove_cumulative : bool, default: False
+        Remove cumulative subducted quantities columns from training data.
+
+    Returns
+    -------
+    x, y : numpy.ndarray
+        x and y are ndarrays of shape (n, m) and (n,), respectively, where
+        n is the number of samples and m is the number of features.
+    """
+    if isinstance(data, str):
+        data = pd.read_csv(data)
+    else:
+        data = pd.DataFrame(data)
 
     to_drop = COLUMNS_TO_DROP.copy()
     if remove_correlated:
         to_drop = to_drop.union(CORRELATED_COLUMNS)
     if remove_cumulative:
         to_drop = to_drop.union(CUMULATIVE_COLUMNS)
-    if remove_preservation:
-        to_drop = to_drop.union(PRESERVATION_COLUMNS)
+    to_drop = to_drop.union(PRESERVATION_COLUMNS)
 
     data = data.sort_index(axis="columns")
     data = data.drop(columns=list(to_drop), errors="ignore")
@@ -186,6 +236,9 @@ def get_xy(
 
 
 def downsample_unlabelled(data, n=None, random_state=None, label="label"):
+    """Downsample unlabelled data to ensure an equal number of labelled and
+    unlabelled samples.
+    """
     if not isinstance(random_state, np.random.Generator):
         random_state = np.random.default_rng(random_state)
     if n is None:
@@ -202,6 +255,7 @@ def downsample_unlabelled(data, n=None, random_state=None, label="label"):
 
 
 def calculate_feature_importances(classifier):
+    """Extract feature importances from a classifier (including ensembles)."""
     try:
         return classifier.feature_importances_
     except AttributeError:
@@ -221,8 +275,30 @@ def generate_grid_points(
     n_jobs=1,
     verbose=False,
 ):
-    if n_jobs is None:
-        n_jobs = 1
+    """Generate a global grid of points for creating prospectivity maps.
+
+    Parameters
+    ----------
+    times : sequence of float
+        Timesteps at which to generate grid points.
+    resolution : float
+        Resolution of grid points (degrees).
+    polygons_dir : str
+        Directory containing subduction zone study area polygon shapefiles.
+    topological_features : FeatureCollection
+        Topological features for plate reconstruction.
+    rotation_model : RotationModel
+        Rotation model for plate reconstruction.
+    n_jobs : int, default: 1
+        Number of processes to use.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Data frame containing the regular grid points.
+    """
     n_jobs = int(n_jobs)
     if n_jobs == 0:
         raise ValueError("n_jobs must not be zero")
@@ -388,12 +464,34 @@ def calculate_probabilities(
     classifier,
     remove_correlated=True,
     remove_cumulative=False,
-    remove_preservation=True,
     label="label",
 ):
-    try:
+    """Calculate probabilities from grid point data and classifier.
+
+    Parameters
+    ----------
+    point_data : str or pandas.DataFrame
+        Data frame containing grid point data.
+    classifier : scikit-learn estimator
+        Trained classifier.
+    remove_correlated : bool, default: True
+        Remove correlated columns from training data.
+    remove_cumulative : bool, default: False
+        Remove cumulative subducted quantities columns from training data.
+    label : str, default: 'label'
+
+    Returns
+    -------
+    pandas.DataFrame
+        Data frame with the following columns:
+        - 'lon'
+        - 'lat'
+        - 'age (Ma)'
+        - 'probability'
+    """
+    if isinstance(point_data, str):
         point_data = pd.read_csv(point_data)
-    except Exception:
+    else:
         point_data = pd.DataFrame(point_data)
 
     to_drop = COLUMNS_TO_DROP.copy()
@@ -402,8 +500,7 @@ def calculate_probabilities(
         to_drop = to_drop.union(CORRELATED_COLUMNS)
     if remove_cumulative:
         to_drop = to_drop.union(CUMULATIVE_COLUMNS)
-    if remove_preservation:
-        to_drop = to_drop.union(PRESERVATION_COLUMNS)
+    to_drop = to_drop.union(PRESERVATION_COLUMNS)
     to_drop = to_drop.difference(
         {
             "lon",
@@ -441,7 +538,35 @@ def create_probability_grids(
     threads=1,
     verbose=False,
 ):
-    data = probabilities.copy()
+    """Create probability raster grids from grid point probabilities.
+
+    Parameters
+    ----------
+    probabilities : str or pandas.DataFrame
+        Data frame containing the following columns:
+        - 'age (Ma)'
+        - 'lon'
+        - 'lat'
+        - 'probability'
+
+    output_dir : str
+        Write netCDF output files to this directory.
+    resolution : float, optional
+        The resolution of the raster grids. By default, this will be
+        determined from the point data.
+    extent : tuple of float, optional
+        The extent of the raster grids (global by default).
+    threads : int, default: 1
+        Number of processes to use.
+    verbose : bool, default: False
+        Print log to stderr.
+    """
+    if isinstance(probabilities, str):
+        data = pd.read_csv(probabilities)
+    else:
+        data = pd.DataFrame(probabilities)
+    del probabilities
+
     times = data["age (Ma)"].unique()
 
     if threads == 1:

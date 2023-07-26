@@ -1,3 +1,6 @@
+"""Functions to join deposit and unlabelled point data to
+time-dependent crustal thickness raster data.
+"""
 import os
 
 from joblib import delayed, Parallel
@@ -16,6 +19,31 @@ def run_coregister_crustal_thickness(
     n_jobs=1,
     verbose=False,
 ):
+    """Join point data to time-dependent crustal thickness rasters.
+
+    Parameters
+    ----------
+    point_data : str or DataFrame
+        Point dataset.
+    input_dir : str
+        Directory containing crustal thickness raster files.
+    distance_threshold : float, default: 3.0
+        Search radius (in degrees of arc) for assigning raster
+        data to points.
+    n_jobs : int, default: 1
+        Number of processes to use.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
+    if isinstance(point_data, str):
+        point_data = pd.read_csv(point_data)
+    else:
+        point_data = pd.DataFrame(point_data)
     with Parallel(n_jobs, verbose=int(verbose)) as parallel:
         out = parallel(
             delayed(coregister_crustal_thickness)(
@@ -42,6 +70,24 @@ def coregister_crustal_thickness(
     df,
     distance_threshold=DEFAULT_DISTANCE_THRESHOLD,
 ):
+    """Join point data to crustal thickness raster.
+
+    Parameters
+    ----------
+    time : float
+    input_dir : str
+        Directory containing crustal thickness raster files.
+    df : str or DataFrame
+        Point dataset.
+    distance_threshold : float, default: 3.0
+        Search radius (in degrees of arc) for assigning raster
+        data to points.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
     df = df.copy()
     df = df[df["age (Ma)"] == time]
 

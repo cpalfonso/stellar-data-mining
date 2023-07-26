@@ -1,3 +1,6 @@
+"""Functions to clean and combine deposit/non-deposit and random
+unlabelled datasets.
+"""
 import os
 import warnings
 from sys import stderr
@@ -27,6 +30,34 @@ def combine_point_data(
     n_jobs=1,
     verbose=False,
 ):
+    """Combine deposit and unlabelled datasets.
+
+    Parameters
+    ----------
+    deposit_data : str or DataFrame
+    unlabelled_data : str or DataFrame
+    static_polygons : FeatureCollection
+    topological_features : FeatureCollection
+    rotation_model : RotationModel
+    study_area_dir : str
+        Directory containing time-dependent study area polygons
+        along subduction zones.
+    output_filename : str, optional
+        If provided, write the combined data to a CSV file.
+    min_time : float, default: -inf
+        Ignore any data from before this time.
+    max_time : float, default: inf
+        Ignore any data from after this time.
+    n_jobs : int, default: 1
+        Number of processes to use.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    DataFrame
+        The combined dataset.
+    """
     if verbose:
         print("Preparing labelled data...", file=stderr)
     deposit_data = _prepare_deposit_data(

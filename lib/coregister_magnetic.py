@@ -1,3 +1,6 @@
+"""Functions to join deposit and unlabelled point data to
+present-day magnetic anomaly raster data.
+"""
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -13,6 +16,26 @@ def coregister_magnetic(
     distance_threshold=DEFAULT_DISTANCE_THRESHOLD,
     n_jobs=None,
 ):
+    """Join point data to present-day magnetic anomaly raster.
+
+    Parameters
+    ----------
+    data : str or DataFrame
+        Point dataset.
+    filename : str or Dataset
+        Magnetic anomaly raster data or filename, in xarray-compatible
+        format.
+    distance_threshold : float, default: 0.1
+        Search radius (in degrees of arc) for assigning raster
+        data to points.
+    n_jobs : int, optional
+        Number of processes to use.
+
+    Returns
+    -------
+    DataFrame
+        The joined dataset.
+    """
     if isinstance(data, str):
         data = pd.read_csv(data)
     else:

@@ -1,3 +1,4 @@
+"""Functions to rasterise topological plate models."""
 import os
 import warnings
 from sys import stderr
@@ -27,6 +28,35 @@ def run_create_plate_map(
     return_output=True,
     verbose=False,
 ):
+    """Rasterise a topological plate model at the given times.
+
+    Parameters
+    ----------
+    nprocs : int
+        Number of processes to use.
+    times : sequence of float
+        Times at which to rasterise the plate model.
+    topology_features : FeatureCollection, optional
+        Topological features for plate reconstruction.
+    rotation_model : RotationModel, optional
+        Rotation model for plate reconstruction.
+    output_dir : str, optional
+        If provided, write rasters to netCDF files in this directory.
+    resolution : float, default: 0.1
+        Resolution of the raster (degrees).
+    tessellate_degrees : float, optional
+        Densify topological geometries to this resolution (arc-degrees)
+        before resolving plate model.
+    return_output : bool, default False
+        Return output (in xarray `Dataset` format).
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    sequence of Dataset
+        The rasterised plate model, if `return_output = True`.
+    """
     if output_dir is not None:
         output_dir = os.path.abspath(output_dir)
         if not os.path.exists(output_dir):
@@ -122,6 +152,35 @@ def create_plate_map(
     output_filename=None,
     verbose=False,
 ):
+    """Rasterise a topological plate model at a given time.
+
+    Parameters
+    ----------
+    time : float
+        Time at which to rasterise the plate model.
+    plate_reconstruction : PlateReconstruction, optional
+        Plate reconstruction to rasterise.
+    topology_features : FeatureCollection, optional
+        Topological features for plate reconstruction. Used if
+        `plate_reconstruction` is not provided.
+    rotation_model : RotationModel, optional
+        Rotation model for plate reconstruction. Used if
+        `plate_reconstruction` is not provided.
+    resolution : float, default: 0.1
+        Resolution of the raster (degrees).
+    tessellate_degrees : float, optional
+        Densify topological geometries to this resolution (arc-degrees)
+        before resolving plate model.
+    output_filename : str, optional
+        If provided, write raster to this netCDF file.
+    verbose : bool, default: False
+        Print log to stderr.
+
+    Returns
+    -------
+    Dataset
+        The rasterised plate model.
+    """
     time = float(time)
     resolution = float(resolution)
     if tessellate_degrees is None:

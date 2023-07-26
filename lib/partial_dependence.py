@@ -1,3 +1,4 @@
+"""Functions to generate partial dependence plots for ML models."""
 import os
 import time
 from datetime import timedelta
@@ -20,16 +21,13 @@ from lib.pu import (
 )
 
 DEFAULT_CLASSIFIER_FILENAME = "pu_classifier.joblib"
-DEFAULT_DATA_FILENAME = "coregistered_combined_data.csv"
+DEFAULT_DATA_FILENAME = "training_data.csv"
 DEFAULT_OUTPUT_BASENAME = "partial_dependence"
 DEFAULT_SAVE_FILENAME = "partial_dependence.joblib"
 
 UNUSED_COLS = CORRELATED_COLUMNS | COLUMNS_TO_DROP | PRESERVATION_COLUMNS
-# FIGURE_SIZE = (16, 9)
 FIGURE_SIZE = (11, 16)
-# NROWS = 2
 NROWS = 3
-# NCOLS = 3
 NCOLS = 2
 N_FEATURES = NROWS * NCOLS
 
@@ -44,6 +42,27 @@ def make_plot(
     verbose=False,
     cumulative_cols=True,
 ):
+    """Create a partial dependence plot, loading from file if possible.
+
+    Parameters
+    ----------
+    output_basename : str, default: 'partial_dependence'
+        Base name of output image files.
+    classifier_filename : str or scikit-learn estimator, default: 'pu_classifier.joblib'
+        Scikit-learn classifier for partial dependence.
+    data_filename : str or pandas.DataFrame, default: 'training_data.csv'
+        Training dataset.
+    save_filename : str, optional
+        If provided, save partial dependence results to this joblib file.
+    load_filename : str, optional
+        If provided, load partial dependence results from this joblib file.
+    verbose : bool, default: False
+        Print log to stderr.
+    n_jobs : int, default: 1
+        Number of processes to use.
+    cumulative_cols : bool, default: True
+        Include cumulative subducted quantities in dataset.
+    """
     if load_filename is not None:
         if not os.path.isfile(load_filename):
             raise FileNotFoundError(f"Input file not found: {load_filename}")
@@ -111,13 +130,36 @@ def get_display_kw(
     n_jobs=1,
     cumulative_cols=True,
 ):
+    """Determine the appropriate keyword arguments for
+    PartialDependenceDisplay.from_estimator.
+
+    Parameters
+    ----------
+    classifier : str or scikit-learn estimator
+        Scikit-learn classifier for partial dependence.
+    data : str or pandas.DataFrame
+        Training dataset.
+    n_jobs : int, default: 1
+        Number of processes to use.
+    cumulative_cols : bool, default: True
+        Include cumulative subducted quantities in dataset.
+
+    Returns
+    -------
+    kwargs : dict
+        Keyword argument dictionary with the following keys:
+        - estimator
+        - X
+        - features
+        - feature_names
+        - n_jobs
+    """
     if not isinstance(classifier, BaseEstimator):
         classifier = joblib.load(classifier)
-    if not isinstance(data, pd.DataFrame):
-        try:
-            data = pd.read_csv(data)
-        except Exception:
-            data = pd.DataFrame(data)
+    if isinstance(data, str):
+        data = pd.read_csv(data)
+    else:
+        data = pd.DataFrame(data)
 
     if cumulative_cols:
         unused_cols = UNUSED_COLS.copy()
@@ -161,6 +203,7 @@ def get_display_kw(
 
 
 def adjust_plot(axs):
+    """Tidy up plot (labels, gridlines, etc.)"""
     for ax, label in zip(np.ravel(axs), ascii_uppercase):
         if ax is not None:
             ax.set_xlabel(format_feature_name(ax.get_xlabel()))

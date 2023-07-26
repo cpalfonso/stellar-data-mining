@@ -1,3 +1,4 @@
+"""Functions to download data bundles from Zenodo, if required."""
 import os
 from shutil import unpack_archive
 from sys import stderr
@@ -18,6 +19,22 @@ _SOURCE_DATA_URL = f"{_ZENODO_URL}/files/source_data.zip"
 
 
 def check_prepared_data(data_dir=None, verbose=False, force=False):
+    """Download the prepared training and grid data bundle.
+
+    Parameters
+    ----------
+    data_dir : str
+        Directory in which to place the data bundle.
+    verbose : bool, default: False
+        Print log to stderr.
+    force : bool, default: False
+        Download data bundle even if it is already present.
+
+    Returns
+    -------
+    data_dir : str
+        The location of the downloaded data bundle.
+    """
     if data_dir is None:
         data_dir = DEFAULT_PREPARED_DATA_DIR
     data_dir = os.path.abspath(data_dir)
@@ -38,6 +55,22 @@ def check_prepared_data(data_dir=None, verbose=False, force=False):
 
 
 def check_source_data(data_dir=None, verbose=False, force=False):
+    """Download the source data bundle.
+
+    Parameters
+    ----------
+    data_dir : str
+        Directory in which to place the data bundle.
+    verbose : bool, default: False
+        Print log to stderr.
+    force : bool, default: False
+        Download data bundle even if it is already present.
+
+    Returns
+    -------
+    data_dir : str
+        The location of the downloaded data bundle.
+    """
     if data_dir is None:
         data_dir = DEFAULT_SOURCE_DATA_DIR
     data_dir = os.path.abspath(data_dir)
@@ -58,6 +91,22 @@ def check_source_data(data_dir=None, verbose=False, force=False):
 
 
 def check_plate_model(model_dir=None, verbose=False, force=False):
+    """Download the plate model data bundle.
+
+    Parameters
+    ----------
+    model_dir : str
+        Directory in which to place the data bundle.
+    verbose : bool, default: False
+        Print log to stderr.
+    force : bool, default: False
+        Download data bundle even if it is already present.
+
+    Returns
+    -------
+    model_dir : str
+        The location of the downloaded data bundle.
+    """
     if model_dir is None:
         model_dir = DEFAULT_MODEL_DIR
     model_dir = os.path.abspath(model_dir)

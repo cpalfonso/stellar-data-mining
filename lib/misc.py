@@ -1,3 +1,4 @@
+"""Miscellaneous useful functions."""
 from sys import stderr
 
 import numpy as np
@@ -24,6 +25,30 @@ def calculate_water_thickness(
     surface_porosity=AVERAGE_OCEAN_FLOOR_SEDIMENT_SURFACE_POROSITY,
     inplace=False,
 ):
+    """Calculate sediment pore water volume density.
+
+    Parameters
+    ----------
+    data : str, pandas.DataFrame, or array_like
+        Sediment thickness data. If `data` is a CSV filename or data frame,
+        the 'sediment_thickness (m)' column will be used. Otherwise,
+        `data` will be assumed to be an array of sediment thickness values.
+    porosity_decay : float, default: 1333
+        Porosity decay constant for pore space calculation.
+    surface_porosity : float, default: 0.66
+        Surface porosity value for pore space calculation.
+    inplace : bool, default: False
+        If `data` is a data frame, modify it in-place.
+
+    Returns
+    -------
+    pandas.DataFrame or numpy.ndarray
+        If `data` was an array_like of sediment thickness values, the output
+        will be a numpy.ndarray of water thickness values. Otherwise, `data`
+        is returned, with an additional column: 'water_thickness (m)'.
+    """
+    if isinstance(data, str):
+        data = pd.read_csv(data)
     if isinstance(data, pd.DataFrame) and not inplace:
         data = data.copy()
 
@@ -46,6 +71,27 @@ def calculate_water_thickness(
 
 
 def calculate_slab_flux(df, inplace=False):
+    """Calculate slab flux from convergence rate and plate thickness.
+
+    Parameters
+    ----------
+    df : str or pandas.DataFrame
+        Input data frame or CSV file, containing the following columns:
+        - 'convergence_rate_orthogonal (cm/yr)', and
+        - 'plate_thickness (m)' or
+        - 'seafloor_age (Ma)'
+
+    inplace : bool, default: False
+        If `data` is a data frame, modify it in-place.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Input data frame, copied if `inplace == False`, with additional
+        column: 'slab_flux (m^2/yr)'.
+    """
+    if isinstance(df, str):
+        df = pd.read_csv(df)
     if not inplace:
         df = df.copy()
 
@@ -72,6 +118,42 @@ def reconstruct_by_topologies(
 ):
     """Simple and efficient reconstruction by topologies (does not account for
     collisions).
+
+    Parameters
+    ----------
+    topological_features : FeatureCollection
+        Topological features for plate reconstruction.
+    rotation_model : RotationModel
+        Rotation model for plate reconstruction.
+    points : array_like
+        Points to reconstruct. Must be an array_like of shape (n, 2),
+        where n is the number of points; each row represents a lat-lon
+        coordinate pair.
+    start_time : float
+        Start time of reconstruction (Ma).
+    end_time : float
+        End time of reconstruction (Ma).
+    time_step : float, default: 1.0
+        Time step (Myr).
+    verbose : bool, default: False
+        Print log to stderr.
+    intermediate_steps : bool, default: False
+        Return all intermediate timesteps.
+
+    Returns
+    -------
+    result
+        If `intermediate_steps == True`, `result` is a 2-tuple of
+        `(times, points)`, where `times` is a numpy.ndarray of timesteps
+        and `points` is a list of point coordinate arrays corresponding
+        to the timesteps int `times`.
+        If `intermediate_steps == False`, result is a single point coordinate
+        array corresponding to the coordinates at `end_time`.
+
+    Notes
+    -----
+    The output coordinate arrays are (n, 2) lat-lon ndarrays, where n is the
+    number of input points.
     """
     topological_features = pygplates.FeaturesFunctionArgument(
         topological_features
