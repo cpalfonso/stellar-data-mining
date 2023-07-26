@@ -5,6 +5,7 @@ dependencies:
   - python=3
   - pygplates
   - pip
+  - jupyter
   - cartopy
   - geopandas
   - ipykernel
