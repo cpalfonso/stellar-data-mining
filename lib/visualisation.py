@@ -18,6 +18,7 @@ BACKGROUND_COLOUR = "0.95"
 
 COASTLINES_KWARGS = {
     "edgecolor": "grey",
+    "linewidth": 0.5,
     "facecolor": "lightgrey",
     "zorder": 1,
 }
