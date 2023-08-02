@@ -12,10 +12,8 @@ DEFAULT_PREPARED_DATA_DIR = os.path.join(DIRNAME, "..", "prepared_data")
 DEFAULT_MODEL_DIR = os.path.join(DIRNAME, "..", "plate_model")
 DEFAULT_SOURCE_DATA_DIR = os.path.join(DIRNAME, "..", "data")
 
+_DOI_URL = "https://doi.org/10.5281/zenodo.8157690"
 _ZENODO_URL = "https://zenodo.org/record/8157691"
-_PREPARED_DATA_URL = f"{_ZENODO_URL}/files/prepared_data.zip"
-_MODEL_URL = f"{_ZENODO_URL}/files/plate_model.zip"
-_SOURCE_DATA_URL = f"{_ZENODO_URL}/files/source_data.zip"
 
 
 def check_prepared_data(data_dir=None, verbose=False, force=False):
@@ -40,14 +38,20 @@ def check_prepared_data(data_dir=None, verbose=False, force=False):
     data_dir = os.path.abspath(data_dir)
 
     if force or (not os.path.isdir(data_dir)):
+        try:
+            zenodo_url = requests.get(_DOI_URL, timeout=5).url
+        except Exception:
+            zenodo_url = _ZENODO_URL
+        url = f"{zenodo_url}/files/prepared_data.zip"
+
         if verbose:
             print(
-                f"Downloading source data: {_PREPARED_DATA_URL}",
+                f"Downloading source data: {url}",
                 file=stderr,
                 flush=True,
             )
         _download_extract(
-            url=_PREPARED_DATA_URL,
+            url=url,
             extract_dir=os.path.dirname(data_dir),
             verbose=verbose,
         )
@@ -76,14 +80,20 @@ def check_source_data(data_dir=None, verbose=False, force=False):
     data_dir = os.path.abspath(data_dir)
 
     if force or (not os.path.isdir(data_dir)):
+        try:
+            zenodo_url = requests.get(_DOI_URL, timeout=5).url
+        except Exception:
+            zenodo_url = _ZENODO_URL
+        url = f"{zenodo_url}/files/source_data.zip"
+
         if verbose:
             print(
-                f"Downloading source data: {_SOURCE_DATA_URL}",
+                f"Downloading source data: {url}",
                 file=stderr,
                 flush=True,
             )
         _download_extract(
-            url=_SOURCE_DATA_URL,
+            url=url,
             extract_dir=os.path.dirname(data_dir),
             verbose=verbose,
         )
@@ -112,14 +122,20 @@ def check_plate_model(model_dir=None, verbose=False, force=False):
     model_dir = os.path.abspath(model_dir)
 
     if force or (not os.path.isdir(model_dir)):
+        try:
+            zenodo_url = requests.get(_DOI_URL, timeout=5).url
+        except Exception:
+            zenodo_url = _ZENODO_URL
+        url = f"{zenodo_url}/files/plate_model.zip"
+
         if verbose:
             print(
-                f"Downloading plate model: {_MODEL_URL}",
+                f"Downloading plate model: {url}",
                 file=stderr,
                 flush=True,
             )
         _download_extract(
-            url=_MODEL_URL,
+            url=url,
             extract_dir=os.path.dirname(model_dir),
             verbose=verbose,
         )
