@@ -31,4 +31,4 @@ dependencies:
     - PlateTectonicTools
     - "git+https://github.com/pulearn/pulearn.git@master"
     - "git+https://github.com/GPlates/gplately.git@master"
-    - "git+https://github.com/brmather/Slab-Dip.git@master"
+    - "git+https://github.com/brmather/Slab-Dip.git@main"
