@@ -13,7 +13,7 @@ __pycache__
 subduction_data*.csv
 grid_data.csv*
 Clennett_data
-outputs
+outputs*
 figures
 figures.zip
 supplementary_figures
