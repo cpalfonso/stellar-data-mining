@@ -6,6 +6,7 @@ source_data
 source_data.zip
 prepared_data
 prepared_data.zip
+extracted_data
 __pycache__
 .mypy_cache
 .vscode
