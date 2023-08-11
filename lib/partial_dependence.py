@@ -12,8 +12,8 @@ import pandas as pd
 from sklearn.base import BaseEstimator
 from sklearn.inspection import PartialDependenceDisplay
 
-from lib.format_feature_names import format_feature_name
-from lib.pu import (
+from .misc import format_feature_name
+from .pu import (
     CORRELATED_COLUMNS,
     COLUMNS_TO_DROP,
     PRESERVATION_COLUMNS,

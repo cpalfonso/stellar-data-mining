@@ -11,7 +11,7 @@ from joblib import load
 from scipy.stats import kendalltau
 from sklearn.base import BaseEstimator
 
-from .format_feature_names import format_feature_name
+from .misc import format_feature_name
 
 
 def calculate_importances(clf, names):
