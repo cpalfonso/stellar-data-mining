@@ -1,3 +1,6 @@
+"""Several functions to facilitate extracting feature importance values from
+models and plotting the results.
+"""
 from itertools import (
     combinations,
     product,
@@ -14,7 +17,23 @@ from sklearn.base import BaseEstimator
 from .misc import format_feature_name
 
 
-def calculate_importances(clf, names):
+def calculate_importances(clf, names=None):
+    """Extract the feature importance values from an estimator.
+
+    Parameters
+    ----------
+    clf : Estimator
+        The estimator from which to extract the importances. Either
+        `clf.feature_importances_` must exist, or each element of
+        `clf.estimators_` must have a `feature_importances_` attribute.
+    names : pandas.Index
+        The names of the features.
+
+    Returns
+    -------
+    pandas.Series
+        The importance values, with their associated names.
+    """
     if not isinstance(clf, BaseEstimator):
         clf = load(clf)
     if hasattr(clf, "feature_importances_"):
@@ -32,11 +51,29 @@ def calculate_importances(clf, names):
             f"type {type(clf)}"
         )
 
-    names = np.array(names, dtype="object")
+    if names is None:
+        names = np.arange(np.size(importances))
+    else:
+        names = np.array(names)
     return pd.Series(importances, index=names)
 
 
 def get_ranks(importances, zero_index=False):
+    """Convert a Series of importance values into a series of ranks.
+
+    Parameters
+    ----------
+    importances : pandas.Series
+        The series of importance values, as returned by
+        `calculate_importances`.
+    zero_index : bool, default: False
+        Whether the ranks should begin at zero or one (default).
+
+    Returns
+    -------
+    pandas.Series
+        The series of feature ranks.
+    """
     ordered = np.array(importances.sort_values(ascending=False).index)
     ranks = pd.Series(np.arange(np.size(ordered)), index=ordered)
     if not zero_index:
@@ -53,6 +90,35 @@ def plot_importances(
     title=None,
     **kwargs
 ):
+    """Plot a model's most important features on a bar chart.
+
+    Parameters
+    ----------
+    clf : Estimator
+        The estimator from which to extract the importances. Either
+        `clf.feature_importances_` must exist, or each element of
+        `clf.estimators_` must have a `feature_importances_` attribute.
+    names : pandas.Index
+        The names of the features.
+    normalise : bool, default: True
+        If True, importance values will be normalised to the value of the
+        most important feature.
+    num_to_keep : int, default: 6
+        The number of features to plot.
+    ax : matplotlib.axes.Axes, optional
+        If provided, the plot will be drawn in `ax`; otherwise, a new figure
+        and set of axes will be created.
+    title : str, optional
+        Custom axes title for plot.
+    **kwargs : dict
+        Further keyword arguments to be passed to `Axes.barh`.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+        The figure and axes for the plot.
+    """
     figsize = kwargs.pop("figsize", (10, num_to_keep * 0.5))
     font_size = kwargs.pop("fontsize", num_to_keep * 2)
     xlabel_size = kwargs.pop("xlabel_size", font_size * 1.25)
@@ -111,13 +177,36 @@ def plot_correlations(
     names,
     verbose=False,
     title=None,
+    alternative="greater",
     kendalltau_kw=None,
     text_kw=None,
     **kwargs
 ):
+    """Plot Kendall's Tau rank correlations between feature importance rankings
+    for different models.
+
+    Parameters
+    ----------
+    clfs : dict[str, Estimator]
+        Dictionary of estimators, with keys corresponding to the names
+        of the different models.
+    names : pandas.Index
+        The names of the features.
+    verbose : bool, default: False
+        Print correlation values to stderr.
+    title : str, optional
+        Custom axes title for the plot.
+    alternative : {'two-sided', 'less', 'greater'}, default: 'greater'
+        Alternative hypothesis for `scipy.stats.kendalltau`.
+    kendalltau_kw : dict, optional
+        Further keyword arguments for `scipy.stats.kendalltau`.
+    text_kw : dict, optional
+        Further keyword arguments for `matplotlib.axes.Axes.text`.
+    **kwargs : dict
+        Further keyword arguments for `matplotlib.axes.Axes.matshow`.
+    """
     if kendalltau_kw is None:
         kendalltau_kw = {}
-    alternative = kendalltau_kw.pop("alternative", "greater")
 
     if text_kw is None:
         text_kw = {}
@@ -131,17 +220,17 @@ def plot_correlations(
     vmax = kwargs.pop("vmax", 1)
 
     importances = {
-        region: calculate_importances(model, names)
-        for region, model in clfs.items()
+        model_name: calculate_importances(model, names)
+        for model_name, model in clfs.items()
     }
     ranks = {
-        region: get_ranks(values)
-        for region, values in importances.items()
+        model_name: get_ranks(values)
+        for model_name, values in importances.items()
     }
     ranks = pd.concat(
         [
-            pd.DataFrame(rank_values, columns=[region])
-            for region, rank_values in ranks.items()
+            pd.DataFrame(rank_values, columns=[model_name])
+            for model_name, rank_values in ranks.items()
         ],
         axis="columns",
     )
