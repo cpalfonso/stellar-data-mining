@@ -202,12 +202,20 @@ def get_display_kw(
     }
 
 
-def adjust_plot(axs):
+def adjust_plot(
+    axs,
+    textsize=18.0,
+    fontsize=10.0,
+    labelsize=8.25,
+):
     """Tidy up plot (labels, gridlines, etc.)"""
     for ax, label in zip(np.ravel(axs), ascii_uppercase):
         if ax is not None:
-            ax.set_xlabel(format_feature_name(ax.get_xlabel()))
-            ax.tick_params(labelsize=8.25)
+            ax.set_xlabel(
+                format_feature_name(ax.get_xlabel()),
+                fontsize=fontsize,
+            )
+            ax.tick_params(labelsize=labelsize)
             ax.grid(color="grey", alpha=0.3, linestyle="dashed")
             ax.text(
                 0.022, 0.97,
@@ -215,7 +223,7 @@ def adjust_plot(axs):
                 horizontalalignment="left",
                 verticalalignment="top",
                 transform=ax.transAxes,
-                fontsize=18,
+                fontsize=textsize,
                 bbox=dict(
                     facecolor="white",
                     edgecolor="lightgrey",
@@ -227,11 +235,15 @@ def adjust_plot(axs):
     for i in np.arange(np.shape(axs)[0]):
         for j in np.arange(np.shape(axs)[1]):
             if j == 0:
-                axs[i, j].set_ylabel(
-                    "Partial dependence\n(probability)"
-                )
+                label = "Partial dependence\n(probability)"
+                # axs[i, j].set_ylabel(
+                #     "Partial dependence\n(probability)",
+                #     fontsize=fontsize,
+                # )
             else:
-                axs[i, j].set_ylabel("")
+                label = ""
+                # axs[i, j].set_ylabel("")
+            axs[i, j].set_ylabel(label, fontsize=fontsize)
 
 
 def _save_plot(fig, output_basename, verbose=False):
