@@ -75,7 +75,7 @@ CUMULATIVE_COLUMNS = {
 BASE_MODELS = {
     "randomforest": RandomForestClassifier(
         n_jobs=1,
-        n_estimators=100,
+        n_estimators=50,
     ),
     "gradientboosting": HistGradientBoostingClassifier(
         max_iter=200,
@@ -86,6 +86,10 @@ BASE_MODELS = {
     "xgboost": XGBClassifier(
         n_estimators=200,
     ),
+}
+PU_PARAMS = {
+    "n_estimators": 100,
+    "max_samples": 1.0,
 }
 
 DEFAULT_RANDOM_STATE = None
@@ -170,8 +174,8 @@ def create_classifier(
         remove_cumulative=remove_cumulative,
     )
 
-    n_estimators = pu_kwargs.pop("n_estimators", 250)
-    max_samples = pu_kwargs.pop("max_samples", 1.0)
+    n_estimators = pu_kwargs.pop("n_estimators", PU_PARAMS["n_estimators"])
+    max_samples = pu_kwargs.pop("max_samples", PU_PARAMS["max_samples"])
 
     bc = BaggingPuClassifier(
         base_classifier,
