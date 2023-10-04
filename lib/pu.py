@@ -7,6 +7,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pygplates
+import rioxarray
 import xarray as xr
 from joblib import (
     Parallel,
@@ -534,24 +535,26 @@ def calculate_probabilities(
     return out
 
 
-def create_probability_grids(
-    probabilities,
+def create_grids(
+    data,
     output_dir,
     resolution=None,
     extent=None,
     threads=1,
     verbose=False,
+    column="probability",
+    filename_format="probability_grid_{}Ma.nc",
 ):
-    """Create probability raster grids from grid point probabilities.
+    """Create raster grids from grid point data.
 
     Parameters
     ----------
-    probabilities : str or pandas.DataFrame
+    data : str or pandas.DataFrame
         Data frame containing the following columns:
         - 'age (Ma)'
         - 'lon'
         - 'lat'
-        - 'probability'
+        - {column} (by default, 'probability')
 
     output_dir : str
         Write netCDF output files to this directory.
@@ -564,12 +567,13 @@ def create_probability_grids(
         Number of processes to use.
     verbose : bool, default: False
         Print log to stderr.
+    column : str, default: 'probability'
+        The column containing the values to grid.
     """
-    if isinstance(probabilities, str):
-        data = pd.read_csv(probabilities)
+    if isinstance(data, str):
+        data = pd.read_csv(data)
     else:
-        data = pd.DataFrame(probabilities)
-    del probabilities
+        data = pd.DataFrame(data)
 
     times = data["age (Ma)"].unique()
 
@@ -579,11 +583,12 @@ def create_probability_grids(
                 time=time,
                 data_lons=np.array(data[data["age (Ma)"] == time]["lon"]),
                 data_lats=np.array(data[data["age (Ma)"] == time]["lat"]),
-                data_values=np.array(data[data["age (Ma)"] == time]["probability"]),
+                data_values=np.array(data[data["age (Ma)"] == time][column]),
                 resolution=resolution,
                 output_dir=output_dir,
                 extent=extent,
                 verbose=verbose,
+                filename_format=filename_format,
             )
     else:
         with Parallel(threads, verbose=10 * int(verbose)) as p:
@@ -592,14 +597,18 @@ def create_probability_grids(
                     time=time,
                     data_lons=np.array(data[data["age (Ma)"] == time]["lon"]),
                     data_lats=np.array(data[data["age (Ma)"] == time]["lat"]),
-                    data_values=np.array(data[data["age (Ma)"] == time]["probability"]),
+                    data_values=np.array(data[data["age (Ma)"] == time][column]),
                     resolution=resolution,
                     output_dir=output_dir,
                     extent=extent,
                     verbose=verbose,
+                    filename_format=filename_format,
                 )
                 for time in times
             )
+
+
+create_probability_grids = create_grids
 
 
 def _create_grid_time(
@@ -611,10 +620,11 @@ def _create_grid_time(
     output_dir,
     extent=None,
     verbose=False,
+    filename_format="probability_grid_{}Ma.nc",
 ):
     time = int(np.around(time))
     output_filename = os.path.join(
-        output_dir, "probability_grid_{}Ma.nc".format(time)
+        output_dir, filename_format.format(time)
     )
 
     if extent is None:
@@ -653,6 +663,7 @@ def _create_grid_time(
             # "time": time,
         },
     )
+    dset.rio.write_crs(4326, inplace=True)
     if verbose:
         print(
             "\t- Writing output file: " + os.path.basename(output_filename),
