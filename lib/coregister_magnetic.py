@@ -1,21 +1,28 @@
 """Functions to join deposit and unlabelled point data to
 present-day magnetic anomaly raster data.
 """
+from typing import Optional, Union
+
 import numpy as np
 import pandas as pd
 import xarray as xr
 from sklearn.neighbors import NearestNeighbors
+
+from .misc import (
+    _PathLike,
+    _PathOrDataFrame,
+)
 
 # Default distance threshold is 6 arc-minutes
 DEFAULT_DISTANCE_THRESHOLD = 6 / 60  # degrees
 
 
 def coregister_magnetic(
-    data,
-    filename,
-    distance_threshold=DEFAULT_DISTANCE_THRESHOLD,
-    n_jobs=None,
-):
+    data: _PathOrDataFrame,
+    filename: Union[_PathLike, xr.Dataset],
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+    n_jobs: Optional[int] = None,
+) -> pd.DataFrame:
     """Join point data to present-day magnetic anomaly raster.
 
     Parameters

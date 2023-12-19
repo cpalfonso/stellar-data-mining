@@ -1,5 +1,10 @@
 """Miscellaneous useful functions."""
+import os
 from sys import stderr
+from typing import (
+    Iterable,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
@@ -17,6 +22,28 @@ SLAB_DIP_COEFF_A = 0.00639289
 SLAB_DIP_COEFF_B = 8.00315437
 ARC_DEPTH = 125.0  # km
 PLATE_THICKNESS_ISOTHERM = 1150.0  # degrees Celsius
+
+# Type hints
+_PathLike = Union[os.PathLike, str]
+_PathOrDataFrame = Union[_PathLike, pd.DataFrame]
+_FeatureCollectionInput = Union[
+    pygplates.FeatureCollection,
+    str,
+    pygplates.Feature,
+    Iterable[pygplates.Feature],
+    Iterable[
+        Union[
+            pygplates.FeatureCollection,
+            str,
+            pygplates.Feature,
+            Iterable[pygplates.Feature],
+        ]
+    ],
+]
+_RotationModelInput = Union[
+    pygplates.RotationModel,
+    _FeatureCollectionInput,
+]
 
 
 def calculate_water_thickness(
@@ -247,7 +274,12 @@ def _reconstruct_timestep(
         rotation_model,
         topologies,
         previous_time,
+        resolve_topology_types=pygplates.ResolveTopologyType.boundary | pygplates.ResolveTopologyType.line,
     )
+    topologies = [
+        i for i in topologies
+        if isinstance(i.get_resolved_geometry(), pygplates.PolygonOnSphere)
+    ]
     polygon_plate_ids = [
         i.get_feature().get_reconstruction_plate_id() for i in topologies
     ]
@@ -296,3 +328,17 @@ def format_feature_name(s):
     s = s.replace("degrees", r"$\degree$")
 
     return s
+
+
+def load_data(
+    data: _PathOrDataFrame,
+    verbose: bool = False,
+    copy: bool = True,
+) -> pd.DataFrame:
+    if not isinstance(data, pd.DataFrame):
+        if verbose:
+            print(f"Loading data from file: {data}", file=stderr)
+        data = pd.read_csv(data)
+    elif copy:
+        data = pd.DataFrame(data)
+    return data

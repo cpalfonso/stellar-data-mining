@@ -1,5 +1,6 @@
 """Functions for training ML models and preparing training data."""
 import os
+import warnings
 from multiprocessing import cpu_count
 from sys import stderr
 
@@ -45,6 +46,12 @@ COLUMNS_TO_DROP = {
     "distance_from_trench_start (degrees)",
     "crustal_thickness_n",
     "magnetic_anomaly_n",
+    "magnetic_anomaly_max (nT)",
+    "magnetic_anomaly_range (nT)",
+    "magnetic_anomaly_median (nT)",
+    "magnetic_anomaly_mean (nT)",
+    "magnetic_anomaly_min (nT)",
+    "magnetic_anomaly_std (nT)",
 }
 CORRELATED_COLUMNS = {
     "arc_trench_distance (km)",
@@ -65,6 +72,7 @@ CORRELATED_COLUMNS = {
 PRESERVATION_COLUMNS = {
     "total_precipitation (km)",
     "total_convergence (km)",
+    "erosion (m)",
 }
 CUMULATIVE_COLUMNS = {
     "subducted_plate_volume (m)",
@@ -72,6 +80,8 @@ CUMULATIVE_COLUMNS = {
     "subducted_water_volume (m)",
     "subducted_carbonates_volume (m)",
 }
+
+UNUSED_COLUMNS = COLUMNS_TO_DROP | CORRELATED_COLUMNS | PRESERVATION_COLUMNS
 
 BASE_MODELS = {
     "randomforest": RandomForestClassifier(
@@ -429,7 +439,9 @@ def _grid_points_time(
     coords = np.column_stack((mlons, mlats))
     mp = MultiPoint(coords)
 
-    intersection = polygons.unary_union.intersection(mp)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        intersection = polygons.unary_union.intersection(mp)
     intersection_coords = np.row_stack([i.coords for i in intersection.geoms])
     plons = intersection_coords[:, 0]
     plats = intersection_coords[:, 1]
@@ -562,7 +574,8 @@ def create_grids(
         The resolution of the raster grids. By default, this will be
         determined from the point data.
     extent : tuple of float, optional
-        The extent of the raster grids (global by default).
+        The extent of the raster grids. By default, this will be determined
+        from the point data.
     threads : int, default: 1
         Number of processes to use.
     verbose : bool, default: False
@@ -632,6 +645,8 @@ def _create_grid_time(
         xmax = np.nanmax(data_lons)
         ymin = np.nanmin(data_lats)
         ymax = np.nanmax(data_lats)
+    elif extent == "global":
+        xmin, xmax, ymin, ymax = -180, 180, -90, 90
     else:
         xmin, xmax, ymin, ymax = extent
 

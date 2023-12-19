@@ -3,11 +3,15 @@ import cartopy.crs as ccrs
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
+import pygplates
 from gplately import (
     PlateReconstruction,
     PlotTopologies,
     Raster,
 )
+from matplotlib import colormaps
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 FIGURE_SIZE_ORTHOGRAPHIC = (10, 10)
 FIGURE_SIZE_MOLLWEIDE = (16, 8)
@@ -15,24 +19,31 @@ FONT_SIZE = 20
 TICK_SIZE = FONT_SIZE * 0.7
 TITLE_SIZE = FONT_SIZE * 1.8
 BACKGROUND_COLOUR = "0.95"
+TESSELLATE_DEGREES = 0.1
 
 COASTLINES_KWARGS = {
     "edgecolor": "grey",
     "linewidth": 0.5,
     "facecolor": "lightgrey",
     "zorder": 1,
+    "tessellate_degrees": TESSELLATE_DEGREES,
 }
 TOPOLOGIES_KWARGS = {
     "color": "black",
     "zorder": COASTLINES_KWARGS["zorder"] + 1,
+    "tessellate_degrees": TESSELLATE_DEGREES,
 }
 RIDGES_KWARGS = {
     "color": "red",
     "zorder": TOPOLOGIES_KWARGS["zorder"] + 0.1,
+    "tessellate_degrees": TESSELLATE_DEGREES,
 }
 TEETH_KWARGS = {
-    "size": 250.0e3,
-    "facecolor": "black",
+    "size": 8,
+    "aspect": 0.7,
+    "spacing": 0.15,
+    "markerfacecolor": "black",
+    "markeredgecolor": "black",
     "zorder": TOPOLOGIES_KWARGS["zorder"],
 }
 SCATTER_KWARGS = {
@@ -49,7 +60,7 @@ IMSHOW_KWARGS = {
     "cmap": "RdYlBu_r",
     "vmin": 0,
     "vmax": 100,
-    "alpha": 0.7,
+    "alpha": 0.9,
     "zorder": 0.5 * (TOPOLOGIES_KWARGS["zorder"] + TEETH_KWARGS["zorder"]),
 }
 SAVEFIG_KWARGS = {
@@ -65,7 +76,8 @@ def plot(
     time=None,
     positives=None,
     output_filename=None,
-    central_meridian=0.0,
+    central_meridian=None,
+    imshow_kwargs=None,
 ):
     """Create plot of probability raster grid.
 
@@ -113,9 +125,14 @@ def plot(
             ]
 
     if projection is None or str(projection).lower() == "mollweide":
-        projection = ccrs.Mollweide()
+        projection = ccrs.Mollweide(
+            central_meridian if central_meridian is not None else 0
+        )
     elif str(projection).lower() == "orthographic":
-        projection = ccrs.Orthographic(-100, 10)
+        projection = ccrs.Orthographic(
+            central_meridian if central_meridian is not None else 0,
+            10,
+        )
     if not isinstance(projection, ccrs.CRS):
         raise TypeError(f"Invalid projection {projection}")
 
@@ -137,22 +154,30 @@ def plot(
     )
     cax = fig.add_axes([0.94, 0.1, 0.03, 0.8])
 
-    im = raster.imshow(ax=ax, **IMSHOW_KWARGS)
+    imshow_kwargs = {} if imshow_kwargs is None else dict(imshow_kwargs)
+    # imshow_kwargs = IMSHOW_KWARGS.copy().update(imshow_kwargs)
+    tmp = IMSHOW_KWARGS.copy()
+    tmp.update(imshow_kwargs)
+    imshow_kwargs = tmp
+    cmap = colormaps[imshow_kwargs.pop("cmap")]
+
+    im = raster.imshow(
+        ax=ax,
+        cmap=cmap,
+        **imshow_kwargs,
+    )
     gplot.plot_coastlines(
         ax=ax,
-        tessellate_degrees=0.1,
         central_meridian=central_meridian,
         **COASTLINES_KWARGS,
     )
-    gplot.plot_all_topologies(
+    gplot.plot_all_topological_sections(
         ax=ax,
-        tessellate_degrees=0.1,
         central_meridian=central_meridian,
         **TOPOLOGIES_KWARGS,
     )
     gplot.plot_ridges_and_transforms(
         ax=ax,
-        tessellate_degrees=0.1,
         central_meridian=central_meridian,
         **RIDGES_KWARGS,
     )
@@ -166,10 +191,33 @@ def plot(
             **SCATTER_KWARGS,
         )
 
-    cbar = fig.colorbar(im, cax=cax, orientation="vertical")
+    sm = ScalarMappable(
+        norm=Normalize(
+            imshow_kwargs.get("vmin", 0),
+            imshow_kwargs.get("vmax", 100),
+        ),
+        cmap=cmap,
+    )
+    cbar = fig.colorbar(sm, cax=cax, orientation="vertical")
     ax.set_global()
 
     cbar.ax.set_ylim(0, 100)
+    cbar.ax.fill_between(
+        x=cbar.ax.get_xlim(),
+        y1=imshow_kwargs.get("vmax", 100),
+        y2=100,
+        color=cmap.get_over(),
+        # alpha=imshow_kwargs.get("alpha", 1),
+        zorder=-1,
+    )
+    cbar.ax.fill_between(
+        x=cbar.ax.get_xlim(),
+        y1=0,
+        y2=imshow_kwargs.get("vmin", 0),
+        color=cmap.get_under(),
+        # alpha=imshow_kwargs.get("alpha", 1),
+        zorder=-1,
+    )
     cbar.ax.set_title(
         "Deposit\nprobability (%)",
         fontsize=FONT_SIZE,
@@ -202,7 +250,15 @@ def _get_gplot(
 ):
     reconstruction = PlateReconstruction(
         rotation_model=rotation_model,
-        topology_features=topology_features,
+        topology_features=pygplates.FeatureCollection(
+            [
+                i for i in pygplates.FeaturesFunctionArgument(
+                    topology_features
+                ).get_features()
+                if i.get_feature_type().to_qualified_string()
+                != "gpml:TopologicalSlabBoundary"
+            ]
+    ),
         static_polygons=static_polygons,
     )
     gplot = PlotTopologies(

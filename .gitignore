@@ -17,3 +17,4 @@ outputs*
 figures.zip
 supplementary_figures.zip
 *.pdf
+.gitattributes

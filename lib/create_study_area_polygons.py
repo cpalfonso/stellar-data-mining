@@ -4,6 +4,11 @@ zones.
 import os
 import warnings
 from sys import stderr
+from typing import (
+    List,
+    Optional,
+    Sequence,
+)
 
 import geopandas as gpd
 import numpy as np
@@ -19,8 +24,13 @@ from gplately.geometry import (
     wrap_geometries,
 )
 from joblib import Parallel, delayed
-from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
+
+from .misc import (
+    _FeatureCollectionInput,
+    _PathLike,
+    _RotationModelInput,
+)
 
 INCREMENT = 1
 
@@ -28,15 +38,15 @@ DEFAULT_SZ_BUFFER_DISTANCE = 6.0  # degrees
 
 
 def run_create_study_area_polygons(
-    nprocs,
-    times,
-    topological_features,
-    rotation_model,
-    output_dir,
-    buffer_distance=DEFAULT_SZ_BUFFER_DISTANCE,
-    verbose=False,
-    return_output=False,
-):
+    nprocs: int,
+    times: Sequence[float],
+    topological_features: _FeatureCollectionInput,
+    rotation_model: _RotationModelInput,
+    output_dir: _PathLike,
+    buffer_distance: float = DEFAULT_SZ_BUFFER_DISTANCE,
+    verbose: bool = False,
+    return_output: bool = False,
+) -> Optional[List[gpd.GeoDataFrame]]:
     """Create study area polygons at the given times.
 
     Parameters
@@ -90,15 +100,16 @@ def run_create_study_area_polygons(
         for i in results:
             out.extend(i)
         return out
+    return None
 
 
 def _multiple_timesteps(
-    times,
-    topological_features,
-    rotation_model,
-    output_dir,
-    buffer_distance,
-    return_output,
+    times: Sequence[float],
+    topological_features: _FeatureCollectionInput,
+    rotation_model: _RotationModelInput,
+    output_dir: _PathLike,
+    buffer_distance: float,
+    return_output: bool,
 ):
     if not isinstance(topological_features, pygplates.FeatureCollection):
         topological_features = pygplates.FeatureCollection(
@@ -126,13 +137,13 @@ def _multiple_timesteps(
 
 
 def create_study_area_polygons(
-    time,
-    topological_features,
-    rotation_model,
-    output_dir,
-    buffer_distance=DEFAULT_SZ_BUFFER_DISTANCE,
-    return_output=False,
-):
+    time: float,
+    topological_features: _FeatureCollectionInput,
+    rotation_model: _RotationModelInput,
+    output_dir: _PathLike,
+    buffer_distance: float = DEFAULT_SZ_BUFFER_DISTANCE,
+    return_output: bool = False,
+) -> Optional[gpd.GeoDataFrame]:
     """Create study area polygons at a given time.
 
     Parameters
@@ -177,6 +188,7 @@ def create_study_area_polygons(
     plate_types = {
         "gpml:TopologicalClosedPlateBoundary",
         "gpml:OceanicCrust",
+        "gpml:TopologicalNetwork",
     }
     plate_polygons = plate_polygons[
         plate_polygons["feature_type"].isin(plate_types)
@@ -220,6 +232,11 @@ def create_study_area_polygons(
             if len(intersection) > 0:
                 clipped.append(intersection)
         clipped = gpd.GeoDataFrame(pd.concat(clipped, ignore_index=True))
+        clipped = clipped[["name", "polarity", "feature_type", "over", "geometry"]]
+        clipped = clipped.rename(
+            columns={"over": "plate_id", "feature_type": "ftype"}
+        )
+        clipped = gpd.GeoDataFrame(clipped, geometry="geometry")
 
     if output_dir is not None:
         output_filename = os.path.join(
@@ -230,6 +247,7 @@ def create_study_area_polygons(
             clipped.to_file(output_filename)
     if return_output:
         return clipped
+    return None
 
 
 def _buffer_sz(row, distance_degrees, crs, out):

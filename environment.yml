@@ -3,26 +3,31 @@ channels:
   - nodefaults
 dependencies:
   - python=3
-  - pygplates
-  - pip
-  - jupyter
   - cartopy
+  - dask
+  - dask-ml
   - geopandas
   - ipykernel
   - joblib
+  - jupyter
   - matplotlib
   - moviepy
   - netcdf4
   - numpy
   - pandas
+  - pip
+  - plate-model-manager
   - pooch
+  - pygplates
   - pykdtree
+  - pyrolite
   - pyyaml
   - rasterio
   - requests
   - rioxarray
   - scikit-image
-  - scikit-learn=1.2.0
+  # - scikit-learn=1.2.0
+  - scikit-learn
   - scipy
   - shapely
   - six
@@ -33,5 +38,5 @@ dependencies:
   - pip:
     - PlateTectonicTools
     - "git+https://github.com/pulearn/pulearn.git@master"
-    - "git+https://github.com/GPlates/gplately.git@master"
+    - "git+https://github.com/GPlates/gplately.git@subduction-teeth"
     - "git+https://github.com/brmather/Slab-Dip.git@main"

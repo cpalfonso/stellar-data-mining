@@ -1,10 +1,20 @@
 """Functions to perform cross-validation of models."""
 import time
 from sys import stderr
+from typing import (
+    Any,
+    Literal,
+    Mapping,
+    Optional,
+)
 
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
+from numpy.typing import ArrayLike
+from sklearn.base import (
+    ClassifierMixin,
+    clone,
+)
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -13,7 +23,11 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection._split import BaseCrossValidator
 
+from .misc import (
+    _PathOrDataFrame,
+)
 from .pu import get_xy
 
 _METRICS = {
@@ -30,20 +44,26 @@ _PROB_METRICS = {
 
 
 def perform_cv(
-    clf,
-    data,
-    cv=None,
-    thresh=0.5,
-    random_state=None,
-    pu=True,
-    separate_regions=True,
-    stratify=None,
-    verbose=False,
-    get_xy_kw=None,
-    return_models=False,
-    thresh_method=None,
-    label="label",
-):
+    clf: ClassifierMixin,
+    data: _PathOrDataFrame,
+    cv: Optional[BaseCrossValidator] = None,
+    thresh: float = 0.5,
+    random_state: Optional[int] = None,
+    pu: bool = True,
+    separate_regions: bool = True,
+    stratify: Optional[ArrayLike] = None,
+    verbose: bool = False,
+    get_xy_kw: Optional[Mapping[str, Any]] = None,
+    return_models: bool = False,
+    thresh_method: Optional[
+        Literal[
+            "balanced_accuracy",
+            "accuracy",
+            "f1",
+        ]
+    ] = None,
+    label: str = "label",
+) -> pd.DataFrame:
     """Perform cross-validation.
 
     Parameters
@@ -103,7 +123,7 @@ def perform_cv(
         stratify = data[stratify]
     elif np.size(stratify) != data.shape[0]:
         raise ValueError(
-            f"Invalid `stratify` parameter: {stratify}"
+            f"Invalid `stratify` parameter: {str(stratify)}"
         )
     split = cv.split(data, stratify)
 
@@ -164,7 +184,7 @@ def _region_cv(
     else:
         auto_thresh = False
 
-    regions = ("All", "NAm", "SAm")
+    regions = data["region"].unique()
     output = {i: [] for i in _METRICS.keys()}
     output["region"] = []
     for which in ("test", "train"):
@@ -194,7 +214,7 @@ def _region_cv(
 
     probs = np.full_like(y_test, np.nan, dtype=np.float_)
     region_data = {}
-    for region in ("NAm", "SAm"):
+    for region in regions:
         indices_region = np.where(test_data["region"] == region)[0]
         x_region = x_test[indices_region, :]
         t0 = time.time()
@@ -207,7 +227,7 @@ def _region_cv(
         }
     region_data["All"] = {
         "indices": np.arange(np.size(probs)),
-        "time": region_data["NAm"]["time"] + region_data["SAm"]["time"],
+        "time": sum([region_data[region]["time"] for region in regions]),
     }
 
     if auto_thresh:

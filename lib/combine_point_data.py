@@ -4,6 +4,7 @@ unlabelled datasets.
 import os
 import warnings
 from sys import stderr
+from typing import Optional
 
 import geopandas as gpd
 import numpy as np
@@ -16,20 +17,27 @@ from gplately import (
 from joblib import Parallel, delayed
 from shapely.geometry import Point
 
+from .misc import (
+    _FeatureCollectionInput,
+    _PathLike,
+    _PathOrDataFrame,
+    _RotationModelInput,
+)
+
 
 def combine_point_data(
-    deposit_data,
-    unlabelled_data,
-    static_polygons,
-    topological_features,
-    rotation_model,
-    study_area_dir,
-    output_filename=None,
-    min_time=-np.inf,
-    max_time=np.inf,
-    n_jobs=1,
-    verbose=False,
-):
+    deposit_data: _PathOrDataFrame,
+    unlabelled_data: _PathOrDataFrame,
+    static_polygons: _FeatureCollectionInput,
+    topological_features: _FeatureCollectionInput,
+    rotation_model: _RotationModelInput,
+    study_area_dir: _PathLike,
+    output_filename: Optional[_PathLike] = None,
+    min_time: float = -np.inf,
+    max_time: float = np.inf,
+    n_jobs: int = 1,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """Combine deposit and unlabelled datasets.
 
     Parameters
@@ -251,7 +259,9 @@ def _clean_timestep(deposit_data, polygons_dir, time):
         polygons_dir, "study_area_{}Ma.shp".format(int(np.around(time)))
     )
     polygons = gpd.read_file(polygons_filename)
-    union = polygons.unary_union
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        union = polygons.unary_union
     valid = []
     for _, row in deposit_data.iterrows():
         p = Point(row["lon"], row["lat"])
@@ -390,14 +400,12 @@ def _overriding_plate_timestep(
     topologies = gplot.get_all_topologies()
     topologies.crs = "EPSG:4326"
     topologies["feature_type"] = topologies["feature_type"].astype(str)
-    topologies = topologies[
-        topologies["feature_type"].isin(
-            {
-                "gpml:OceanicCrust",
-                "gpml:TopologicalClosedPlateBoundary",
-            }
-        )
-    ]
+    plate_types = {
+        "gpml:TopologicalClosedPlateBoundary",
+        "gpml:OceanicCrust",
+        "gpml:TopologicalNetwork",
+    }
+    topologies = topologies[topologies["feature_type"].isin(plate_types)]
 
     gdf_time = gdf[gdf["age (Ma)"] == time]
     if gdf_time.crs is None:

@@ -3,6 +3,7 @@ zone kinematics data.
 """
 import os
 from sys import stderr
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -10,14 +11,19 @@ from gplately import EARTH_RADIUS
 from joblib import Parallel, delayed
 from sklearn.neighbors import NearestNeighbors
 
+from .misc import (
+    _PathLike,
+    _PathOrDataFrame,
+)
+
 
 def run_coregister_combined_point_data(
-    point_data,
-    subduction_data,
-    output_filename=None,
-    n_jobs=1,
-    verbose=False,
-):
+    point_data: _PathOrDataFrame,
+    subduction_data: _PathOrDataFrame,
+    output_filename: Optional[_PathLike] = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """Join point data to subduction zone data.
 
     Parameters
@@ -100,7 +106,11 @@ def run_coregister_combined_point_data(
     return out
 
 
-def coregister_combined_point_data(time, points, szs):
+def coregister_combined_point_data(
+    time: float,
+    points: pd.DataFrame,
+    szs: pd.DataFrame,
+) -> pd.DataFrame:
     """Coregister datasets at a give time.
 
     Parameters

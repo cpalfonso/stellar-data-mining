@@ -5,22 +5,25 @@ import math
 import os
 import warnings
 from sys import stderr
+from typing import Sequence, Union
 
 import numpy as np
 import pandas as pd
 from ptt import subduction_convergence
 
+from .misc import _PathLike
+
 INCREMENT = 1
 
 
 def run_calculate_convergence(
-    nprocs,
-    min_time,
-    max_time,
-    topology_filenames,
-    rotation_filenames,
-    output_dir,
-    verbose=False,
+    nprocs: int,
+    min_time: float,
+    max_time: float,
+    topology_filenames: Sequence[str],
+    rotation_filenames: Union[Sequence[str], str],
+    output_dir: _PathLike,
+    verbose: bool = False,
 ):
     """Wrapper to call `calculate_convergence` in parallel.
 
@@ -43,7 +46,7 @@ def run_calculate_convergence(
         if verbose:
             print(
                 "Output directory does not exist; creating now: "
-                + output_dir,
+                + str(output_dir),
                 file=stderr,
             )
         os.makedirs(output_dir, exist_ok=True)
@@ -81,11 +84,11 @@ def run_calculate_convergence(
 
 
 def calculate_convergence(
-    min_time,
-    max_time,
-    topology_filenames,
-    rotation_filenames,
-    output_dir,
+    min_time: float,
+    max_time: float,
+    topology_filenames: Sequence[str],
+    rotation_filenames: Union[Sequence[str], str],
+    output_dir: _PathLike,
 ):
     """Wrapper around `subduction_convergence_over_time` from
     PlateTectonicTools that also adds column names to the output files.
@@ -127,8 +130,8 @@ def calculate_convergence(
         )
 
     output_filenames = [
-        output_prefix + f"_{time}.00." + output_extension
-        for time in range(min_time, max_time + INCREMENT, INCREMENT)
+        output_prefix + f"_{time:0.2f}." + output_extension
+        for time in range(int(min_time), int(max_time) + INCREMENT, INCREMENT)
     ]
 
     column_names = (

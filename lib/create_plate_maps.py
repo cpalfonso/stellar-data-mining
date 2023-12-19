@@ -2,8 +2,16 @@
 import os
 import warnings
 from sys import stderr
+from typing import (
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+)
 
 import numpy as np
+import pygplates
 import xarray as xr
 from gplately import (
     PlateReconstruction,
@@ -18,16 +26,16 @@ DEFAULT_RESOLUTION = 0.1
 
 
 def run_create_plate_map(
-    nprocs,
-    times,
-    topology_features,
-    rotation_model,
-    output_dir=None,
-    resolution=DEFAULT_RESOLUTION,
-    tessellate_degrees=None,
-    return_output=True,
-    verbose=False,
-):
+    nprocs: int,
+    times: Sequence[float],
+    topology_features: pygplates.FeatureCollection,
+    rotation_model: pygplates.RotationModel,
+    output_dir: Optional[Union[os.PathLike, str]] = None,
+    resolution: float = DEFAULT_RESOLUTION,
+    tessellate_degrees: Optional[float] = None,
+    return_output: bool = True,
+    verbose: bool = False,
+) -> Optional[List[xr.Dataset]]:
     """Rasterise a topological plate model at the given times.
 
     Parameters
@@ -103,6 +111,7 @@ def run_create_plate_map(
             for i in results_nested:
                 results.extend(i)
             return results
+    return None
 
 
 def _run_subset(
@@ -143,15 +152,15 @@ def _run_subset(
 
 
 def create_plate_map(
-    time,
-    plate_reconstruction=None,
-    topology_features=None,
-    rotation_model=None,
-    resolution=DEFAULT_RESOLUTION,
-    tessellate_degrees=None,
-    output_filename=None,
-    verbose=False,
-):
+    time: float,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    topology_features: Optional[pygplates.FeatureCollection] = None,
+    rotation_model: Optional[pygplates.RotationModel] = None,
+    resolution: float = DEFAULT_RESOLUTION,
+    tessellate_degrees: Optional[float] = None,
+    output_filename: Optional[Union[os.PathLike, str]] = None,
+    verbose: bool = False,
+) -> xr.Dataset:
     """Rasterise a topological plate model at a given time.
 
     Parameters

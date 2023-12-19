@@ -9,16 +9,21 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 import xarray as xr
 
+from .misc import (
+    _PathLike,
+    _PathOrDataFrame,
+)
+
 DEFAULT_DISTANCE_THRESHOLD = 3.0  # degrees
 
 
 def run_coregister_crustal_thickness(
-    point_data,
-    input_dir,
-    distance_threshold=DEFAULT_DISTANCE_THRESHOLD,
-    n_jobs=1,
-    verbose=False,
-):
+    point_data: _PathOrDataFrame,
+    input_dir: _PathLike,
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+    n_jobs: int = 1,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """Join point data to time-dependent crustal thickness rasters.
 
     Parameters
@@ -65,11 +70,11 @@ def run_coregister_crustal_thickness(
 
 
 def coregister_crustal_thickness(
-    time,
-    input_dir,
-    df,
-    distance_threshold=DEFAULT_DISTANCE_THRESHOLD,
-):
+    time: float,
+    input_dir: _PathLike,
+    df: _PathOrDataFrame,
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+) -> pd.DataFrame:
     """Join point data to crustal thickness raster.
 
     Parameters
@@ -92,7 +97,7 @@ def coregister_crustal_thickness(
     df = df[df["age (Ma)"] == time]
 
     input_filename = os.path.join(
-        input_dir, "crustal_thickness_{}Ma.nc".format(time)
+        input_dir, "crustal_thickness_{:0.0f}Ma.nc".format(time)
     )
     with xr.open_dataset(input_filename) as dset:
         thickness = np.array(dset["z"])

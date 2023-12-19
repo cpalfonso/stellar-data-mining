@@ -3,6 +3,7 @@ import os
 from shutil import unpack_archive
 from sys import stderr
 from tempfile import TemporaryDirectory
+from typing import Optional, Union
 
 import requests
 from tqdm import tqdm
@@ -16,7 +17,11 @@ _DOI_URL = "https://doi.org/10.5281/zenodo.8157690"
 _ZENODO_URL = "https://zenodo.org/record/8157691"
 
 
-def check_prepared_data(data_dir=None, verbose=False, force=False):
+def check_prepared_data(
+    data_dir: Optional[Union[os.PathLike, str]] = None,
+    verbose: bool = False,
+    force: bool = False,
+) -> str:
     """Download the prepared training and grid data bundle.
 
     Parameters
@@ -58,7 +63,11 @@ def check_prepared_data(data_dir=None, verbose=False, force=False):
     return data_dir
 
 
-def check_source_data(data_dir=None, verbose=False, force=False):
+def check_source_data(
+    data_dir: Optional[Union[os.PathLike, str]] = None,
+    verbose: bool = False,
+    force: bool = False,
+) -> str:
     """Download the source data bundle.
 
     Parameters
@@ -100,7 +109,11 @@ def check_source_data(data_dir=None, verbose=False, force=False):
     return data_dir
 
 
-def check_plate_model(model_dir=None, verbose=False, force=False):
+def check_plate_model(
+    model_dir: Optional[Union[os.PathLike, str]] = None,
+    verbose: bool = False,
+    force: bool = False,
+) -> str:
     """Download the plate model data bundle.
 
     Parameters
@@ -141,12 +154,11 @@ def check_plate_model(model_dir=None, verbose=False, force=False):
         )
     return model_dir
 
-
 def _download_extract(
-    url,
-    extract_dir,
-    archive_filename=None,
-    verbose=False,
+    url: str,
+    extract_dir: Union[os.PathLike, str],
+    archive_filename: Optional[Union[os.PathLike, str]] = None,
+    verbose: bool = False,
 ):
     if archive_filename is None:
         tempdir = TemporaryDirectory()

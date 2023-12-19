@@ -4,6 +4,7 @@ time-dependent ocean plate raster data.
 import os
 import warnings
 from sys import stderr
+from typing import Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -13,37 +14,45 @@ from sklearn.neighbors import NearestNeighbors
 from skimage.transform import resize
 
 from .create_plate_maps import create_plate_map
+from .misc import (
+    _PathLike,
+    _PathOrDataFrame,
+    _FeatureCollectionInput,
+    _RotationModelInput,
+)
 
 INCREMENT = 1
 
 
 def run_coregister_ocean_rasters(
-    nprocs,
-    times,
-    input_data,
-    output_dir=None,
-    combined_filename=None,
-    topology_features=None,
-    rotation_model=None,
-    plates_dir=None,
-    agegrid_dir=None,
-    sedthick_dir=None,
-    carbonate_dir=None,
-    co2_dir=None,
-    subducted_thickness_dir=None,
-    subducted_sediments_dir=None,
-    subducted_carbonates_dir=None,
-    subducted_water_dir=None,
-    verbose=False,
-):
+    nprocs: int,
+    times: Sequence[float],
+    input_data: Union[_PathLike, Sequence[pd.DataFrame]],
+    output_dir: Optional[_PathLike] = None,
+    combined_filename: Optional[_PathLike] = None,
+    topology_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
+    plates_dir: Optional[_PathLike] = None,
+    agegrid_dir: Optional[_PathLike] = None,
+    sedthick_dir: Optional[_PathLike] = None,
+    carbonate_dir: Optional[_PathLike] = None,
+    co2_dir: Optional[_PathLike] = None,
+    subducted_thickness_dir: Optional[_PathLike] = None,
+    subducted_sediments_dir: Optional[_PathLike] = None,
+    subducted_carbonates_dir: Optional[_PathLike] = None,
+    subducted_water_dir: Optional[_PathLike] = None,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """Join time-dependent subduction zone data to raster data.
 
     Parameters
     ----------
+    nprocs : int
+        The number of processes to use.
     times : sequence of float.
         The time steps of the data.
-    input_data : str or DataFrame
-        The input subduction zone data.
+    input_data : str
+        The input subduction zone data directory.
     output_dir : str, optional
         If provided, write joined data to CSV files in this directory.
     combined_filename : str, optional
@@ -104,7 +113,7 @@ def run_coregister_ocean_rasters(
         if verbose:
             print(
                 "Output directory does not exist; creating now: "
-                + output_dir,
+                + str(output_dir),
                 file=stderr,
             )
         os.makedirs(output_dir, exist_ok=True)
@@ -207,22 +216,22 @@ def _run_subset(
 
 
 def coregister_ocean_rasters(
-    time,
-    df,
-    agegrid_dir,
-    sedthick_dir,
-    carbonate_dir,
-    co2_dir,
-    output_dir,
-    topology_features=None,
-    rotation_model=None,
-    plates_dir=None,
-    subducted_thickness_dir=None,
-    subducted_sediments_dir=None,
-    subducted_carbonates_dir=None,
-    subducted_water_dir=None,
+    time: float,
+    df: _PathOrDataFrame,
+    agegrid_dir: _PathLike,
+    sedthick_dir: _PathLike,
+    carbonate_dir: _PathLike,
+    co2_dir: _PathLike,
+    output_dir: _PathLike,
+    topology_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
+    plates_dir: Optional[_PathLike] = None,
+    subducted_thickness_dir: Optional[_PathLike] = None,
+    subducted_sediments_dir: Optional[_PathLike] = None,
+    subducted_carbonates_dir: Optional[_PathLike] = None,
+    subducted_water_dir: Optional[_PathLike] = None,
     **kwargs
-):
+) -> pd.DataFrame:
     """Join subduction zone data to raster data.
 
     Parameters
