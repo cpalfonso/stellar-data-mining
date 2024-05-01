@@ -5,6 +5,8 @@ import os
 import warnings
 from sys import stderr
 from typing import (
+    Hashable,
+    Iterable,
     List,
     Optional,
     Sequence,
@@ -24,7 +26,8 @@ from gplately.geometry import (
     wrap_geometries,
 )
 from joblib import Parallel, delayed
-from shapely.geometry.base import BaseGeometry
+from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
+from shapely.ops import linemerge
 
 from .misc import (
     _FeatureCollectionInput,
@@ -142,6 +145,7 @@ def create_study_area_polygons(
     rotation_model: _RotationModelInput,
     output_dir: _PathLike,
     buffer_distance: float = DEFAULT_SZ_BUFFER_DISTANCE,
+    clip_to_overriding_plate: bool = False,
     return_output: bool = False,
 ) -> Optional[gpd.GeoDataFrame]:
     """Create study area polygons at a given time.
@@ -158,6 +162,9 @@ def create_study_area_polygons(
         Write output shapefile to this directory.
     buffer_distance : float, default: 6.0
         Width of subduction zone study area (arc degrees).
+    clip_to_overriding_plate : bool, default: False
+        Clip output polygons to topological polygon corresponding to
+        the subduction zone's overriding plate ID.
     return_output : bool, default: False
         Return output (in GeoDataFrame format).
 
@@ -205,17 +212,16 @@ def create_study_area_polygons(
         warnings.simplefilter("ignore", FutureWarning)
 
         topologies = topologies[
-            (topologies["over"] != -1) & (topologies["over"] != 0)
+            (topologies["over"] != -1)
+            & (topologies["over"] != 0)
+            & (topologies["polarity"] != "None")
         ]
         topologies = topologies.explode(ignore_index=True)
-        global_bounds_buffer = 1.0e0
-        mask = (
-            -180.0 + global_bounds_buffer,
-            -90.0 + global_bounds_buffer,
-            180.0 - global_bounds_buffer,
-            90.0 - global_bounds_buffer,
-        )
-        # topologies = topologies.clip(mask)
+        for i in topologies.index:
+            if topologies.at[i, "polarity"].lower() != "left":
+                topologies.at[i, "geometry"] = topologies.at[i, "geometry"].reverse()
+                topologies.at[i, "polarity"] = "Left"
+        topologies = _merge_lines(topologies)
         buffered = {}
         for _, row in topologies.iterrows():
             _buffer_sz(row, buffer_distance, topologies.crs, out=buffered)
@@ -223,20 +229,24 @@ def create_study_area_polygons(
             buffered, geometry="geometry", crs=topologies.crs
         )
 
-        clipped = []
-        for plate_id in buffered["over"].unique():
-            intersection = gpd.overlay(
-                buffered[buffered["over"] == plate_id],
-                plate_polygons[plate_polygons["reconstruction_plate_ID"] == plate_id],
+        if clip_to_overriding_plate:
+            clipped = []
+            for plate_id in buffered["over"].unique():
+                intersection = gpd.overlay(
+                    buffered[buffered["over"] == plate_id],
+                    plate_polygons[plate_polygons["reconstruction_plate_ID"] == plate_id],
+                )
+                if len(intersection) > 0:
+                    clipped.append(intersection)
+            clipped = gpd.GeoDataFrame(pd.concat(clipped, ignore_index=True))
+            clipped = clipped[["name", "polarity", "feature_type", "over", "geometry"]]
+            clipped = clipped.rename(
+                columns={"over": "plate_id", "feature_type": "ftype"}
             )
-            if len(intersection) > 0:
-                clipped.append(intersection)
-        clipped = gpd.GeoDataFrame(pd.concat(clipped, ignore_index=True))
-        clipped = clipped[["name", "polarity", "feature_type", "over", "geometry"]]
-        clipped = clipped.rename(
-            columns={"over": "plate_id", "feature_type": "ftype"}
-        )
-        clipped = gpd.GeoDataFrame(clipped, geometry="geometry")
+            buffered = gpd.GeoDataFrame(clipped, geometry="geometry")
+
+    if not buffered.geometry.is_valid.all():
+        buffered.geometry = buffered.buffer(0)
 
     if output_dir is not None:
         output_filename = os.path.join(
@@ -244,9 +254,9 @@ def create_study_area_polygons(
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            clipped.to_file(output_filename)
+            buffered.to_file(output_filename)
     if return_output:
-        return clipped
+        return buffered
     return None
 
 
@@ -259,7 +269,11 @@ def _buffer_sz(row, distance_degrees, crs, out):
     projected = geom.to_crs(proj)
 
     distance_metres = np.deg2rad(distance_degrees) * EARTH_RADIUS * 1000.0
-    projected_buffered = projected.buffer(distance_metres)
+    direction = 1.0 if str(row["polarity"]).lower() == "left" else -1.0
+    projected_buffered = projected.buffer(
+        distance_metres * direction,
+        single_sided=True,
+    )
     buffered = projected_buffered.to_crs(crs)
     geometry_out = buffered[0]
     geometries_out = wrap_geometries(
@@ -277,10 +291,8 @@ def _buffer_sz(row, distance_degrees, crs, out):
             else:
                 out[column_name].append(row[column_name])
         if "geometry" not in out:
-            # out["geometry"] = [buffered[0]]
             out["geometry"] = [i]
         else:
-            # out["geometry"].append(buffered[0])
             out["geometry"].append(i)
     return out
 
@@ -420,3 +432,35 @@ def _extract_overriding_plates(
         crs="EPSG:4326",
     )
     return gdf
+
+
+def _merge_lines(
+    data: gpd.GeoDataFrame,
+    groupby: Iterable[Hashable] = ("polarity", "type", "over"),
+):
+    out = []
+    for gb_vals, grouped in data.groupby(list(groupby)):
+        geom = linemerge(grouped.geometry.to_list())
+        if isinstance(geom, BaseMultipartGeometry):
+            geom = list(geom.geoms)
+        else:
+            geom = [geom]
+        gb_data = {
+            "geometry": geom,
+            **{
+                gb_col: gb_val
+                for gb_col, gb_val
+                in zip(groupby, gb_vals)
+            }
+        }
+        if "name" not in gb_data.keys():
+            gb_data["name"] = ":".join(grouped["name"].unique())
+        out.append(
+            gpd.GeoDataFrame(gb_data, geometry="geometry")
+        )
+    out = gpd.GeoDataFrame(
+        pd.concat(out, ignore_index=True),
+        geometry="geometry",
+        crs=data.crs,
+    )
+    return out

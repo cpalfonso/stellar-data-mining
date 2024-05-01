@@ -16,12 +16,17 @@ from joblib import (
     dump,
 )
 from pulearn import BaggingPuClassifier
+from scipy.integrate import trapezoid
 from shapely.geometry import MultiPoint
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import (
     AdaBoostClassifier,
     HistGradientBoostingClassifier,
     RandomForestClassifier,
+)
+from sklearn.metrics import (
+    make_scorer,
+    recall_score,
 )
 from xgboost import XGBClassifier
 
@@ -99,7 +104,7 @@ BASE_MODELS = {
     ),
 }
 PU_PARAMS = {
-    "n_estimators": 100,
+    "n_estimators": 50,
     "max_samples": 1.0,
 }
 
@@ -121,6 +126,52 @@ DEFAULT_OUTPUT_FILENAME = os.path.join(
 DEFAULT_BASE_CLASSIFIER = "randomforest"
 DEFAULT_WEIGHTS_COLUMN = None
 CONST_WEIGHTS_COLUMN = "Cu (Mt)"
+
+
+def adjusted_recall_score(y, y_pred, **kwargs):
+    zero_division = kwargs.get("zero_division", "warn")
+    r = recall_score(y_true=y, y_pred=y_pred, **kwargs)
+    pos_ratio = np.nanmean(y_pred != 0)
+    if pos_ratio == 0.0:
+        if zero_division == "warn":
+            warnings.warn("Divide by zero encountered", RuntimeWarning)
+            zero_division = 0.0
+        out = zero_division
+    else:
+        out = (r ** 2) / pos_ratio
+    return out
+
+
+def adjusted_recall_auc_score(y, y_pred, **kwargs):
+    # zero_division = kwargs.get("zero_division", "warn")
+    dx = kwargs.pop("dx", 0.05)
+    thresh_vals = np.arange(0, 1, dx)
+    grid = np.row_stack([y_pred] * len(thresh_vals))
+    grid = (grid >= thresh_vals.reshape((-1, 1))).astype(np.int_)
+    results = np.empty_like(thresh_vals)
+    for i in range(results.size):
+        results[i] = adjusted_recall_score(y, grid[i, :], **kwargs)
+    return trapezoid(results, thresh_vals)
+
+
+weighted_recall_score = adjusted_recall_score
+weighted_recall_auc_score = adjusted_recall_auc_score
+
+
+class Scorer:
+    adjusted_recall_score = make_scorer(adjusted_recall_score, zero_division=0.0)
+    adjusted_recall_auc_score = make_scorer(
+        adjusted_recall_auc_score,
+        needs_proba=True,
+        zero_division=0.0,
+    )
+
+    def __init__(self, *args, **kwargs): raise NotImplementedError
+
+
+def importance_getter(clf):
+    a = np.row_stack([i.feature_importances_ for i in clf.estimators_])
+    return np.nanmean(a, axis=0)
 
 
 def create_classifier(
@@ -454,15 +505,29 @@ def _grid_points_time(
         present_lons = np.full_like(plons, np.nan)
     else:
         present_day_coords = reconstruct_by_topologies(
-            topological_features,
-            rotation_model,
-            np.fliplr(intersection_coords),
-            start_time=float(time),
-            end_time=0.0,
-            time_step=1.0,
+            data=pd.DataFrame(
+                {
+                    "lon": plons,
+                    "lat": plats,
+                    "age (Ma)": time,
+                }
+            ),
+            rotation_model=rotation_model,
+            topological_features=topological_features,
+            times=np.arange(np.around(time) + 1),
         )
-        present_lats = present_day_coords[:, 0]
-        present_lons = present_day_coords[:, 1]
+        present_lons = present_day_coords["lon_0"]
+        present_lats = present_day_coords["lat_0"]
+        # present_day_coords = reconstruct_by_topologies(
+        #     topological_features,
+        #     rotation_model,
+        #     np.fliplr(intersection_coords),
+        #     start_time=float(time),
+        #     end_time=0.0,
+        #     time_step=1.0,
+        # )
+        # present_lats = present_day_coords[:, 0]
+        # present_lons = present_day_coords[:, 1]
 
     out = pd.DataFrame(
         {
@@ -614,7 +679,7 @@ def create_grids(
                     resolution=resolution,
                     output_dir=output_dir,
                     extent=extent,
-                    verbose=verbose,
+                    verbose=False,
                     filename_format=filename_format,
                 )
                 for time in times

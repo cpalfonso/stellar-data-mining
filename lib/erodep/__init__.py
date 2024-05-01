@@ -31,6 +31,8 @@ __all__ = [
     "SCATTER_KW",
     "plot_erosion_maps",
     "plot_erosion",
+    "plot_erosion_rate_maps",
+    "plot_erosion_rate",
     "plot_likelihood_maps",
     "plot_likelihood",
 ]

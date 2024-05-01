@@ -79,18 +79,44 @@ def _erodep_timestep(time, dir=_DEFAULT_DIR, dt=1.0):
         shape = (lats.size, lons.size)
         return np.zeros(shape, dtype=np.float_)
 
+    erodep_rate = _erorate_timestep(time=time, dir=dir)
+    timestep_total = erodep_rate * dt
+    return timestep_total
+
+
+@lru_cache(maxsize=5)
+def _erorate_timestep(time, dir=_DEFAULT_DIR):
+    if time < 0.0:
+        raise ValueError(f"Invalid time: {time}")
+
     filenames = _get_erodep_filenames(dir=dir)
     erodep_times = {time_from_filename(_) for _ in filenames}
     erodep_times = np.array(sorted(erodep_times))
-    valid_times = erodep_times[time > erodep_times]
 
-    erodep_time = np.max(valid_times)
-    filename = filename_from_time(erodep_time, dir=dir)
-    with xr.open_dataset(filename) as dset:
-        erodep_rate = np.array(dset["erate"])
+    if time in erodep_times:
+        filename = filename_from_time(time, dir=dir)
+        with xr.open_dataset(filename) as dset:
+            erodep_rate = np.array(dset["erate"])
+    else:
+        t0 = np.max(erodep_times[erodep_times < time])
+        t1 = np.min(erodep_times[erodep_times > time])
+
+        dt0 = time - t0
+        dt1 = t1 - time
+
+        f0 = filename_from_time(t0, dir=dir)
+        with xr.open_dataset(f0) as dset0:
+            erorate0 = np.array(dset0["erate"])
+        f1 = filename_from_time(t1, dir=dir)
+        with xr.open_dataset(f1) as dset1:
+            erorate1 = np.array(dset1["erate"])
+        erodep_rate = (
+            erorate0 * dt1  # (dt0 + dt1) - dt0
+            + erorate1 * dt0
+        ) / (dt0 + dt1)  # weighted mean
+
     erodep_rate *= 1.0e6 * 1.0e-3  # mm/yr to m/Myr
-    timestep_total = erodep_rate * dt
-    return timestep_total
+    return erodep_rate
 
 
 @lru_cache(maxsize=1)

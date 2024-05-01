@@ -48,12 +48,20 @@ from sklearn.preprocessing import (
     MinMaxScaler,
 )
 
+from ._extract_erodep import (
+    extract_lat_lon,
+    _erorate_timestep,
+)
 from ..misc import (
     _PathLike,
     _PathOrDataFrame,
     load_data,
+    reconstruct_by_topologies,
 )
-from ..visualisation import SCATTER_KWARGS as SCATTER_KW
+from ..visualisation import (
+    SCATTER_KWARGS as SCATTER_KW,
+    _add_deposits,
+)
 
 __all__ = [
     "TRANSFORM",
@@ -74,6 +82,8 @@ __all__ = [
     "plot_combined",
     "plot_erosion_maps",
     "plot_erosion",
+    "plot_erosion_rate_maps",
+    "plot_erosion_rate",
     "plot_likelihood_maps",
     "plot_likelihood",
     "_prepare_map",
@@ -100,6 +110,12 @@ IMSHOW_KW = {
 EROSION_KW = {
     **IMSHOW_KW,
     "norm": LogNorm(100, 10000),
+}
+ERORATE_KW = {
+    "cmap": "RdBu",
+    "zorder": IMSHOW_KW["zorder"],
+    "vmin": -300,
+    "vmax": 300,
 }
 LIKELIHOOD_KW = {
     **IMSHOW_KW,
@@ -165,13 +181,20 @@ def plot_erosion_maps(
     output_dir: str,
     projection: ccrs.Projection = ccrs.Mollweide(),
     n_jobs: int = 1,
-    verbose: int = 10,
+    verbose: int = 1,
     output_template: str = r"image_{:0.0f}Ma.png",
     deposits: Optional[_PathOrDataFrame] = None,
 ):
     if deposits is not None:
         deposits = load_data(deposits, verbose=verbose > 0)
         deposits = deposits[deposits["label"] == "positive"]
+        deposits = reconstruct_by_topologies(
+            data=deposits,
+            rotation_model=rotation_filenames,
+            topological_features=topology_filenames,
+            times=times,
+            verbose=verbose > 0,
+        )
 
     if n_jobs == 1:
         reconstruction = PlateReconstruction(
@@ -184,20 +207,30 @@ def plot_erosion_maps(
                 output_dir,
                 output_template.format(time),
             )
-            if deposits is not None:
-                dep = deposits[
-                    (deposits["age (Ma)"] - time).abs()
-                    <= 2.5
-                ]
-            else:
-                dep = None
+            # if deposits is not None:
+            #     dep = deposits[
+            #         (deposits["age (Ma)"] - time).abs()
+            #         <= 2.5
+            #     ]
+            # else:
+            #     dep = None
             plot_erosion(
                 time=time,
                 gplot=gplot,
                 input_dir=input_dir,
                 projection=projection,
                 output_filename=output_filename,
-                deposits=dep,
+                deposits=(
+                    None if deposits is None
+                    else deposits[[
+                        *[f"lon_{i:0.0f}" for i in t],
+                        *[f"lat_{i:0.0f}" for i in t],
+                        "lon",
+                        "lat",
+                        "label",
+                        "age (Ma)",
+                    ]]
+                ),
             )
     else:
         if n_jobs == 0:
@@ -216,7 +249,17 @@ def plot_erosion_maps(
                     output_dir=output_dir,
                     projection=projection,
                     output_template=output_template,
-                    deposits=deposits,
+                    deposits=(
+                        None if deposits is None
+                        else deposits[[
+                            *[f"lon_{i:0.0f}" for i in t],
+                            *[f"lat_{i:0.0f}" for i in t],
+                            "lon",
+                            "lat",
+                            "label",
+                            "age (Ma)",
+                        ]]
+                    ),
                 )
                 for t in times_split
             )
@@ -246,22 +289,22 @@ def _plot_erosion_subset(
             output_dir,
             output_template.format(time),
         )
-        dep = deposits
-        if dep is not None:
-            dep = dep[
-                (
-                    (dep["age (Ma)"] - time).abs()
-                    <= 2.5
-                )
-                & (dep["label"] == "positive")
-            ]
+        # dep = deposits
+        # if dep is not None:
+        #     dep = dep[
+        #         (
+        #             (dep["age (Ma)"] - time).abs()
+        #             <= 2.5
+        #         )
+        #         & (dep["label"] == "positive")
+        #     ]
         plot_erosion(
             time=time,
             gplot=gplot,
             input_dir=input_dir,
             projection=projection,
             output_filename=output_filename,
-            deposits=dep,
+            deposits=deposits,
         )
 
 
@@ -287,6 +330,16 @@ def plot_erosion(
     )
 
     if deposits is not None:
+        deposits = load_data(deposits)
+        if (
+            f"lon_{time:0.0f}" not in deposits.columns
+            or f"lat_{time:0.0f}" not in deposits.columns
+        ):
+            deposits = reconstruct_by_topologies(
+                data=deposits,
+                plate_reconstruction=gplot.plate_reconstruction,
+                times=np.arange(time, deposits["age (Ma)"].round().max() + 1),
+            )
         _add_deposits(
             ax=ax,
             deposits=deposits,
@@ -317,6 +370,204 @@ def plot_erosion(
     return fig
 
 
+def plot_erosion_rate_maps(
+    times: Sequence[float],
+    topology_filenames: Union[str, Sequence[str]],
+    rotation_filenames: Union[str, Sequence[str]],
+    coastline_filenames: Union[str, Sequence[str]],
+    input_dir: _PathLike,
+    output_dir: str,
+    projection: ccrs.Projection = ccrs.Mollweide(),
+    n_jobs: int = 1,
+    verbose: int = 1,
+    output_template: str = r"image_{:0.0f}Ma.png",
+    deposits: Optional[_PathOrDataFrame] = None,
+):
+    if deposits is not None:
+        deposits = load_data(deposits, verbose=verbose > 0)
+        deposits = deposits[deposits["label"] == "positive"]
+        deposits = reconstruct_by_topologies(
+            data=deposits,
+            rotation_model=rotation_filenames,
+            topological_features=topology_filenames,
+            times=times,
+            verbose=verbose > 0,
+        )
+
+    if n_jobs == 1:
+        reconstruction = PlateReconstruction(
+            rotation_filenames,
+            topology_filenames,
+        )
+        gplot = PlotTopologies(reconstruction, coastlines=coastline_filenames)
+        for time in times:
+            output_filename = os.path.join(
+                output_dir,
+                output_template.format(time),
+            )
+            # if deposits is not None:
+            #     dep = deposits[
+            #         (deposits["age (Ma)"] - time).abs()
+            #         <= 2.5
+            #     ]
+            # else:
+            #     dep = None
+            plot_erosion_rate(
+                time=time,
+                gplot=gplot,
+                input_dir=input_dir,
+                projection=projection,
+                output_filename=output_filename,
+                deposits=(
+                    None if deposits is None
+                    else deposits[[
+                        *[f"lon_{i:0.0f}" for i in t],
+                        *[f"lat_{i:0.0f}" for i in t],
+                        "lon",
+                        "lat",
+                        "label",
+                        "age (Ma)",
+                    ]]
+                ),
+            )
+    else:
+        if n_jobs == 0:
+            raise ValueError("`n_jobs` must not be zero")
+        if n_jobs < 0:
+            n_jobs = cpu_count() + n_jobs + 1
+        times_split = np.array_split(times, n_jobs)
+        with Parallel(n_jobs, verbose=verbose) as parallel:
+            parallel(
+                delayed(_plot_erosion_rate_subset)(
+                    times=t,
+                    topology_filenames=topology_filenames,
+                    rotation_filenames=rotation_filenames,
+                    coastline_filenames=coastline_filenames,
+                    input_dir=input_dir,
+                    output_dir=output_dir,
+                    projection=projection,
+                    output_template=output_template,
+                    deposits=(
+                        None if deposits is None
+                        else deposits[[
+                            *[f"lon_{i:0.0f}" for i in t],
+                            *[f"lat_{i:0.0f}" for i in t],
+                            "lon",
+                            "lat",
+                            "label",
+                            "age (Ma)",
+                        ]]
+                    ),
+                )
+                for t in times_split
+            )
+
+
+def _plot_erosion_rate_subset(
+    times,
+    topology_filenames,
+    rotation_filenames,
+    coastline_filenames,
+    input_dir,
+    output_dir,
+    projection = ccrs.Mollweide(),
+    output_template=r"image_{:0.0f}Ma.png",
+    deposits: Optional[_PathOrDataFrame] = None,
+):
+    reconstruction = PlateReconstruction(
+        rotation_filenames,
+        topology_filenames,
+        static_polygons=coastline_filenames,
+    )
+    gplot = PlotTopologies(
+        reconstruction,
+        coastlines=coastline_filenames,
+    )
+
+    if deposits is not None and (not isinstance(deposits, pd.DataFrame)):
+        deposits = pd.read_csv(deposits)
+    for time in times:
+        output_filename = os.path.join(
+            output_dir,
+            output_template.format(time),
+        )
+        # dep = deposits
+        # if dep is not None:
+        #     dep = dep[
+        #         (
+        #             (dep["age (Ma)"] - time).abs()
+        #             <= 2.5
+        #         )
+        #         & (dep["label"] == "positive")
+        #     ]
+        plot_erosion_rate(
+            time=time,
+            gplot=gplot,
+            input_dir=input_dir,
+            projection=projection,
+            output_filename=output_filename,
+            deposits=deposits,
+        )
+
+
+def plot_erosion_rate(
+    time: float,
+    gplot: PlotTopologies,
+    input_dir: _PathLike,
+    projection: ccrs.Projection = ccrs.Mollweide(),
+    output_filename: Optional[str] = None,
+    deposits: Optional[_PathOrDataFrame] = None,
+) -> Optional[Figure]:
+    gplot.time = time
+    lats, lons = extract_lat_lon(input_dir)
+    extent = (lons.min(), lons.max(), lats.min(), lats.max())
+    erorate = Raster(
+        _erorate_timestep(time, input_dir),
+        extent=extent,
+        time=0,
+        plate_reconstruction=gplot.plate_reconstruction,
+    )
+    erorate = erorate.reconstruct(time)
+
+    fig, ax, cax = _prepare_map(gplot=gplot, projection=projection, time=time)
+    im = erorate.imshow(
+        ax=ax,
+        **ERORATE_KW,
+    )
+
+    if deposits is not None:
+        deposits = load_data(deposits)
+        if (
+            f"lon_{time:0.0f}" not in deposits.columns
+            or f"lat_{time:0.0f}" not in deposits.columns
+        ):
+            deposits = reconstruct_by_topologies(
+                data=deposits,
+                plate_reconstruction=gplot.plate_reconstruction,
+                times=np.arange(time, deposits["age (Ma)"].round().max() + 1),
+            )
+        _add_deposits(
+            ax=ax,
+            deposits=deposits,
+            time=time,
+            **SCATTER_KW,
+        )
+
+    cbar = fig.colorbar(
+        im,
+        cax=cax,
+        orientation="horizontal",
+    )
+    cbar.ax.tick_params(labelsize=TICKSIZE)
+    cbar.ax.set_xlabel(r"Erosion rate ($\mathrm{m \; {Myr}^{-1}}$)", fontsize=FONTSIZE)
+
+    if output_filename is not None:
+        fig.savefig(output_filename, **SAVEFIG_KW)
+        plt.close(fig)
+        fig = None
+    return fig
+
+
 def plot_likelihood_maps(
     times: Sequence[float],
     topology_filenames: Union[str, Sequence[str]],
@@ -331,9 +582,15 @@ def plot_likelihood_maps(
     deposits: Optional[_PathOrDataFrame] = None,
 ):
     if deposits is not None:
-        if not isinstance(deposits, pd.DataFrame):
-            deposits = pd.read_csv(deposits)
+        deposits = load_data(deposits, verbose=verbose > 0)
         deposits = deposits[deposits["label"] == "positive"]
+        deposits = reconstruct_by_topologies(
+            data=deposits,
+            rotation_model=rotation_filenames,
+            topological_features=topology_filenames,
+            times=times,
+            verbose=verbose > 0,
+        )
 
     if n_jobs == 1:
         reconstruction = PlateReconstruction(
@@ -346,20 +603,30 @@ def plot_likelihood_maps(
                 output_dir,
                 output_template.format(time),
             )
-            if deposits is not None:
-                dep = deposits[
-                    (deposits["age (Ma)"] - time).abs()
-                    <= 2.5
-                ]
-            else:
-                dep = None
+            # if deposits is not None:
+            #     dep = deposits[
+            #         (deposits["age (Ma)"] - time).abs()
+            #         <= 2.5
+            #     ]
+            # else:
+            #     dep = None
             plot_likelihood(
                 time=time,
                 gplot=gplot,
                 input_dir=input_dir,
                 projection=projection,
                 output_filename=output_filename,
-                deposits=dep,
+                deposits=(
+                    None if deposits is None
+                    else deposits[[
+                        *[f"lon_{i:0.0f}" for i in t],
+                        *[f"lat_{i:0.0f}" for i in t],
+                        "lon",
+                        "lat",
+                        "label",
+                        "age (Ma)",
+                    ]]
+                ),
             )
     else:
         if n_jobs == 0:
@@ -378,7 +645,17 @@ def plot_likelihood_maps(
                     output_dir=output_dir,
                     projection=projection,
                     output_template=output_template,
-                    deposits=deposits,
+                    deposits=(
+                        None if deposits is None
+                        else deposits[[
+                            *[f"lon_{i:0.0f}" for i in t],
+                            *[f"lat_{i:0.0f}" for i in t],
+                            "lon",
+                            "lat",
+                            "label",
+                            "age (Ma)",
+                        ]]
+                    ),
                 )
                 for t in times_split
             )
@@ -408,22 +685,22 @@ def _plot_likelihood_subset(
             output_dir,
             output_template.format(time),
         )
-        dep = deposits
-        if dep is not None:
-            dep = dep[
-                (
-                    (dep["age (Ma)"] - time).abs()
-                    <= 2.5
-                )
-                & (dep["label"] == "positive")
-            ]
+        # dep = deposits
+        # if dep is not None:
+        #     dep = dep[
+        #         (
+        #             (dep["age (Ma)"] - time).abs()
+        #             <= 2.5
+        #         )
+        #         & (dep["label"] == "positive")
+        #     ]
         plot_likelihood(
             time=time,
             gplot=gplot,
             input_dir=input_dir,
             projection=projection,
             output_filename=output_filename,
-            deposits=dep,
+            deposits=deposits,
         )
 
 
@@ -450,6 +727,16 @@ def plot_likelihood(
     )
 
     if deposits is not None:
+        deposits = load_data(deposits)
+        if (
+            f"lon_{time:0.0f}" not in deposits.columns
+            or f"lat_{time:0.0f}" not in deposits.columns
+        ):
+            deposits = reconstruct_by_topologies(
+                data=deposits,
+                plate_reconstruction=gplot.plate_reconstruction,
+                times=np.arange(time, deposits["age (Ma)"].round().max() + 1),
+            )
         _add_deposits(
             ax=ax,
             deposits=deposits,
@@ -497,9 +784,15 @@ def plot_combined_maps(
     transformer: Optional[BaseEstimator] = None,
 ):
     if deposits is not None:
-        if not isinstance(deposits, pd.DataFrame):
-            deposits = pd.read_csv(deposits)
+        deposits = load_data(deposits, verbose=verbose > 0)
         deposits = deposits[deposits["label"] == "positive"]
+        deposits = reconstruct_by_topologies(
+            data=deposits,
+            rotation_model=rotation_filenames,
+            topological_features=topology_filenames,
+            times=times,
+            verbose=verbose > 0,
+        )
 
     if n_jobs == 1:
         reconstruction = PlateReconstruction(
@@ -512,13 +805,13 @@ def plot_combined_maps(
                 output_dir,
                 output_template.format(time),
             )
-            if deposits is not None:
-                dep = deposits[
-                    (deposits["age (Ma)"] - time).abs()
-                    <= 2.5
-                ]
-            else:
-                dep = None
+            # if deposits is not None:
+            #     dep = deposits[
+            #         (deposits["age (Ma)"] - time).abs()
+            #         <= 2.5
+            #     ]
+            # else:
+            #     dep = None
             plot_combined(
                 time=time,
                 gplot=gplot,
@@ -526,7 +819,17 @@ def plot_combined_maps(
                 preservation_dir=preservation_dir,
                 projection=projection,
                 output_filename=output_filename,
-                deposits=dep,
+                deposits=(
+                    None if deposits is None
+                    else deposits[[
+                        *[f"lon_{i:0.0f}" for i in t],
+                        *[f"lat_{i:0.0f}" for i in t],
+                        "lon",
+                        "lat",
+                        "label",
+                        "age (Ma)",
+                    ]]
+                ),
                 method=method,
                 transformer=transformer,
             )
@@ -548,7 +851,17 @@ def plot_combined_maps(
                     output_dir=output_dir,
                     projection=projection,
                     output_template=output_template,
-                    deposits=deposits,
+                    deposits=(
+                        None if deposits is None
+                        else deposits[[
+                            *[f"lon_{i:0.0f}" for i in t],
+                            *[f"lat_{i:0.0f}" for i in t],
+                            "lon",
+                            "lat",
+                            "label",
+                            "age (Ma)",
+                        ]]
+                    ),
                     method=method,
                     transformer=transformer,
                 )
@@ -583,15 +896,15 @@ def _plot_combined_subset(
             output_dir,
             output_template.format(time),
         )
-        dep = deposits
-        if dep is not None:
-            dep = dep[
-                (
-                    (dep["age (Ma)"] - time).abs()
-                    <= 2.5
-                )
-                & (dep["label"] == "positive")
-            ]
+        # dep = deposits
+        # if dep is not None:
+        #     dep = dep[
+        #         (
+        #             (dep["age (Ma)"] - time).abs()
+        #             <= 2.5
+        #         )
+        #         & (dep["label"] == "positive")
+        #     ]
         plot_combined(
             time=time,
             gplot=gplot,
@@ -599,7 +912,7 @@ def _plot_combined_subset(
             preservation_dir=preservation_dir,
             projection=projection,
             output_filename=output_filename,
-            deposits=dep,
+            deposits=deposits,
             method=method,
             transformer=transformer,
         )
@@ -666,6 +979,16 @@ def plot_combined(
     )
 
     if deposits is not None:
+        deposits = load_data(deposits)
+        if (
+            f"lon_{time:0.0f}" not in deposits.columns
+            or f"lat_{time:0.0f}" not in deposits.columns
+        ):
+            deposits = reconstruct_by_topologies(
+                data=deposits,
+                plate_reconstruction=gplot.plate_reconstruction,
+                times=np.arange(time, deposits["age (Ma)"].round().max() + 1),
+            )
         _add_deposits(
             ax=ax,
             deposits=deposits,
@@ -768,29 +1091,6 @@ def _prepare_map(
         raise ValueError(f"Invalid colorbar_orientation: {colorbar_orientation}")
 
     return fig, ax, cax
-
-
-def _add_deposits(
-    ax: Axes,
-    deposits,
-    time=None,
-    **kwargs
-):
-    if not isinstance(deposits, pd.DataFrame):
-        deposits = pd.read_csv(deposits)
-    if time is not None and "age (Ma)" in deposits.columns:
-        deposits = deposits[
-            (deposits["age (Ma)"] - time).abs()
-            <= 2.5
-        ]
-    if "label" in deposits.columns:
-        deposits = deposits[deposits["label"] == "positive"]
-    if deposits.shape[0] > 0:
-        return ax.plot(
-            deposits["lon"],
-            deposits["lat"],
-            **kwargs,
-        )
 
 
 def _ticks_from_norm(norm: LogNorm, as_str=False):

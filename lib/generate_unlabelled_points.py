@@ -190,28 +190,59 @@ def _generate_points_timestep(
 
     if topological_features is not None and rotation_model is not None:
         if time == 0.0:
-            present_day_coords = np.fliplr(points)
+            # present_day_coords = np.fliplr(points)
+            present_day_coords = pd.DataFrame(
+                {
+                    "lon_0": points[:, 0],
+                    "lat_0": points[:, 1],
+                }
+            )
         else:
             present_day_coords = reconstruct_by_topologies(
-                topological_features,
-                rotation_model,
-                np.fliplr(points),
-                start_time=float(time),
-                end_time=0.0,
-                time_step=1.0,
+                data=pd.DataFrame(
+                    {
+                        "lon": points[:, 0],
+                        "lat": points[:, 1],
+                        "age (Ma)": time,
+                    }
+                ),
+                rotation_model=rotation_model,
+                topological_features=topological_features,
+                times=np.arange(np.around(time) + 1.0, dtype=np.int_),
+                verbose=False,
             )
+            # present_day_coords = reconstruct_by_topologies(
+            #     topological_features,
+            #     rotation_model,
+            #     np.fliplr(points),
+            #     start_time=float(time),
+            #     end_time=0.0,
+            #     time_step=1.0,
+            # )
     else:
-        present_day_coords = np.full_like(points, np.nan)
+        # present_day_coords = np.full_like(points, np.nan)
+        present_day_coords = pd.DataFrame(
+            {
+                "lon_0": np.full_like(points, np.nan),
+                "lat_0": np.full_like(points, np.nan),
+            }
+        )
 
-    out = pd.DataFrame(
-        {
-            "lon": points[:, 0],
-            "lat": points[:, 1],
-            "present_lon": present_day_coords[:, 1],
-            "present_lat": present_day_coords[:, 0],
-            "age (Ma)": time,
-        }
-    )
+    try:
+        out = pd.DataFrame(
+            {
+                "lon": points[:, 0],
+                "lat": points[:, 1],
+                # "present_lon": present_day_coords[:, 1],
+                # "present_lat": present_day_coords[:, 0],
+                "present_lon": present_day_coords["lon_0"],
+                "present_lat": present_day_coords["lat_0"],
+                "age (Ma)": time,
+            }
+        )
+    except IndexError as err:
+        print(present_day_coords)
+        raise err
     return out
 
 

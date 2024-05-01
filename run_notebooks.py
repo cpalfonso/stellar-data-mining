@@ -31,12 +31,12 @@ def run_notebook(
     output_filename=None,
     parameters=None,
 ):
+    if not input_filename.endswith(".ipynb"):
+        input_filename += ".ipynb"
     if not os.path.isfile(input_filename):
         raise FileNotFoundError(
             f"Input file not found: {input_filename}"
         )
-    if not input_filename.endswith(".ipynb"):
-        input_filename += ".ipynb"
     if output_filename is None:
         output_filename = input_filename[:-6] + "_output.ipynb"
     print(f"Running notebook: {input_filename}", file=sys.stderr)

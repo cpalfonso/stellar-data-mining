@@ -235,7 +235,8 @@ def adjust_plot(
     for i in np.arange(np.shape(axs)[0]):
         for j in np.arange(np.shape(axs)[1]):
             if j == 0:
-                label = "Partial dependence\n(probability)"
+                label = "Mean probability"
+                # label = "Partial dependence\n(probability)"
                 # axs[i, j].set_ylabel(
                 #     "Partial dependence\n(probability)",
                 #     fontsize=fontsize,
