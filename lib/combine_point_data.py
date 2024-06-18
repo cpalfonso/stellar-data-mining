@@ -28,10 +28,11 @@ from .misc import (
 def combine_point_data(
     deposit_data: _PathOrDataFrame,
     unlabelled_data: _PathOrDataFrame,
-    static_polygons: _FeatureCollectionInput,
-    topological_features: _FeatureCollectionInput,
-    rotation_model: _RotationModelInput,
     study_area_dir: _PathLike,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    static_polygons: Optional[_FeatureCollectionInput] = None,
+    topological_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
     output_filename: Optional[_PathLike] = None,
     min_time: float = -np.inf,
     max_time: float = np.inf,
@@ -44,12 +45,13 @@ def combine_point_data(
     ----------
     deposit_data : str or DataFrame
     unlabelled_data : str or DataFrame
-    static_polygons : FeatureCollection
-    topological_features : FeatureCollection
-    rotation_model : RotationModel
     study_area_dir : str
         Directory containing time-dependent study area polygons
         along subduction zones.
+    plate_reconstruction : PlateReconstruction, optional
+    static_polygons : FeatureCollection, optional
+    topological_features : FeatureCollection, optional
+    rotation_model : RotationModel, optional
     output_filename : str, optional
         If provided, write the combined data to a CSV file.
     min_time : float, default: -inf
@@ -66,13 +68,18 @@ def combine_point_data(
     DataFrame
         The combined dataset.
     """
+    if plate_reconstruction is None:
+        plate_reconstruction = PlateReconstruction(
+            rotation_model=rotation_model,
+            topology_features=topological_features,
+            static_polygons=static_polygons,
+        )
+
     if verbose:
         print("Preparing labelled data...", file=stderr)
     deposit_data = _prepare_deposit_data(
         deposit_data=deposit_data,
-        static_polygons=static_polygons,
-        topological_features=topological_features,
-        rotation_model=rotation_model,
+        plate_reconstruction=plate_reconstruction,
         study_area_dir=study_area_dir,
         min_time=min_time,
         max_time=max_time,
@@ -85,8 +92,7 @@ def combine_point_data(
 
     unlabelled_data = _prepare_unlabelled_data(
         unlabelled_data=unlabelled_data,
-        topological_features=topological_features,
-        rotation_model=rotation_model,
+        plate_reconstruction=plate_reconstruction,
         min_time=min_time,
         max_time=max_time,
         n_jobs=n_jobs,
@@ -118,9 +124,7 @@ def combine_point_data(
 
 def _prepare_deposit_data(
     deposit_data,
-    static_polygons,
-    topological_features,
-    rotation_model,
+    plate_reconstruction,
     study_area_dir,
     min_time=-np.inf,
     max_time=np.inf,
@@ -149,8 +153,7 @@ def _prepare_deposit_data(
 
     deposit_data = _partition_and_reconstruct(
         deposit_data=deposit_data,
-        static_polygons=static_polygons,
-        rotation_model=rotation_model,
+        plate_reconstruction=plate_reconstruction,
     )
     deposit_data = _clean_deposit_data(
         deposit_data=deposit_data,
@@ -160,28 +163,17 @@ def _prepare_deposit_data(
     )
     deposit_data = _get_overriding_plate_ids(
         data=deposit_data,
-        topological_features=topological_features,
-        rotation_model=rotation_model,
+        plate_reconstruction=plate_reconstruction,
         n_jobs=n_jobs,
         verbose=verbose,
     )
     return deposit_data
 
 
-def _partition_and_reconstruct(
-    deposit_data,
-    static_polygons,
-    rotation_model,
-):
+def _partition_and_reconstruct(deposit_data, plate_reconstruction):
     """Partition into plates and reconstruct"""
-    if not isinstance(static_polygons, pygplates.FeatureCollection):
-        static_polygons = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                static_polygons
-            ).get_features()
-        )
-    if not isinstance(rotation_model, pygplates.RotationModel):
-        rotation_model = pygplates.RotationModel(rotation_model)
+    rotation_model = plate_reconstruction.rotation_model
+    static_polygons = plate_reconstruction.static_polygons
 
     features = []
     for index, row in deposit_data.iterrows():
@@ -256,8 +248,12 @@ def _clean_deposit_data(deposit_data, polygons_dir, nprocs, verbose=False):
 
 def _clean_timestep(deposit_data, polygons_dir, time):
     polygons_filename = os.path.join(
-        polygons_dir, "study_area_{}Ma.shp".format(int(np.around(time)))
+        polygons_dir, f"study_area_{time:0.0f}Ma.geojson"
     )
+    if not os.path.isfile(polygons_filename):
+        polygons_filename = os.path.join(
+            polygons_dir, f"study_area_{time:0.0f}Ma.shp"
+        )
     polygons = gpd.read_file(polygons_filename)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -275,8 +271,7 @@ def _clean_timestep(deposit_data, polygons_dir, time):
 
 def _prepare_unlabelled_data(
     unlabelled_data,
-    topological_features,
-    rotation_model,
+    plate_reconstruction,
     min_time=-np.inf,
     max_time=np.inf,
     n_jobs=1,
@@ -298,8 +293,7 @@ def _prepare_unlabelled_data(
     ]
     unlabelled_data = _get_overriding_plate_ids(
         data=unlabelled_data,
-        topological_features=topological_features,
-        rotation_model=rotation_model,
+        plate_reconstruction=plate_reconstruction,
         n_jobs=n_jobs,
         verbose=verbose,
     )
@@ -308,8 +302,7 @@ def _prepare_unlabelled_data(
 
 def _get_overriding_plate_ids(
     data,
-    topological_features,
-    rotation_model,
+    plate_reconstruction,
     n_jobs=1,
     verbose=False,
 ):
@@ -327,8 +320,7 @@ def _get_overriding_plate_ids(
         results = parallel(
             delayed(_overriding_plate_multiple_timesteps)(
                 gdf=gdf[gdf["age (Ma)"].isin(t)],
-                topological_features=topological_features,
-                rotation_model=rotation_model,
+                plate_reconstruction=plate_reconstruction,
             )
             for t in times_split
         )
@@ -344,19 +336,9 @@ def _get_overriding_plate_ids(
     return out
 
 
-def _overriding_plate_multiple_timesteps(
-    gdf,
-    topological_features,
-    rotation_model,
-):
-    if not isinstance(topological_features, pygplates.FeatureCollection):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if not isinstance(rotation_model, pygplates.RotationModel):
-        rotation_model = pygplates.RotationModel(rotation_model)
+def _overriding_plate_multiple_timesteps(gdf, plate_reconstruction):
+    topological_features = plate_reconstruction.topology_features
+    rotation_model = plate_reconstruction.rotation_model
 
     times = gdf["age (Ma)"].unique()
     out = []

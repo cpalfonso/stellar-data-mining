@@ -121,6 +121,9 @@ def plot(
     -------
     matplotlib.figure.Figure
     """
+    imshow_kwargs = {} if imshow_kwargs is None else imshow_kwargs
+    imshow_kwargs = _copy_update_dict(IMSHOW_KWARGS, imshow_kwargs)
+
     if not isinstance(gplot, PlotTopologies):
         gplot = _get_gplot(**gplot)
 
@@ -171,65 +174,8 @@ def plot(
     )
     cax = fig.add_axes([0.94, 0.1, 0.03, 0.8])
 
-    if imshow_kwargs is None or "cmap" not in dict(imshow_kwargs).keys():
-        cmap = IMSHOW_KWARGS["cmap"]
-    else:
-        cmap = dict(imshow_kwargs)["cmap"]
-    cmap = colormaps[cmap]
+    cmap = colormaps[imshow_kwargs["cmap"]]
 
-    # raster.imshow(
-    #     ax=ax,
-    #     cmap=cmap,
-    #     **imshow_kwargs,
-    # )
-    # gplot.plot_coastlines(
-    #     ax=ax,
-    #     central_meridian=central_meridian,
-    #     **COASTLINES_KWARGS,
-    # )
-    # gplot.plot_all_topological_sections(
-    #     ax=ax,
-    #     central_meridian=central_meridian,
-    #     **TOPOLOGIES_KWARGS,
-    # )
-    # gplot.plot_ridges_and_transforms(
-    #     ax=ax,
-    #     central_meridian=central_meridian,
-    #     **RIDGES_KWARGS,
-    # )
-    # gplot.plot_subduction_teeth(ax=ax, **TEETH_KWARGS)
-
-    # if positives is not None:
-    #     if (
-    #         f"lon_{time:0.0f}" not in positives.columns
-    #         or f"lat_{time:0.0f}" not in positives.columns
-    #     ):
-    #         positives = reconstruct_by_topologies(
-    #             data=positives,
-    #             plate_reconstruction=gplot.plate_reconstruction,
-    #             times=np.arange(time, positives["age (Ma)"].round().max() + 1),
-    #             verbose=False,
-    #         )
-    #     _add_deposits(
-    #         ax=ax,
-    #         deposits=positives,
-    #         time=time,
-    #         **SCATTER_KWARGS,
-    #     )
-        # ax.plot(
-        #     "lon",
-        #     "lat",
-        #     data=positives,
-        #     **SCATTER_KWARGS,
-        # )
-
-    # sm = ScalarMappable(
-    #     norm=Normalize(
-    #         imshow_kwargs.get("vmin", 0),
-    #         imshow_kwargs.get("vmax", 100),
-    #     ),
-    #     cmap=cmap,
-    # )
     sm = _prepare_axes(
         ax=ax,
         gplot=gplot,
@@ -843,7 +789,11 @@ def _prepare_axes(
     )
     gplot.plot_subduction_teeth(ax=ax, **teeth_kwargs)
 
-    if positives is not None:
+    if (
+        positives is not None
+        and isinstance(positives, pd.DataFrame)
+        and positives.shape[0] > 0
+    ):
         if (
             f"lon_{time:0.0f}" not in positives.columns
             or f"lat_{time:0.0f}" not in positives.columns

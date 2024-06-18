@@ -27,8 +27,7 @@ dependencies:
   - requests
   - rioxarray
   - scikit-image
-  # - scikit-learn=1.2.0
-  - scikit-learn
+  - scikit-learn<1.5.0
   - scipy
   - shapely
   - six
@@ -39,5 +38,5 @@ dependencies:
   - pip:
     - PlateTectonicTools
     - "git+https://github.com/pulearn/pulearn.git@master"
-    - "git+https://github.com/GPlates/gplately.git@subduction-teeth"
+    - "git+https://github.com/cpalfonso/gplately.git@teeth-updates"
     - "git+https://github.com/brmather/Slab-Dip.git@main"

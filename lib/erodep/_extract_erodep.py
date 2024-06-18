@@ -48,15 +48,15 @@ _DEFAULT_DIR = os.path.abspath(os.path.join(_DIRNAME, "..", "..", "erodep_maps")
 def time_from_filename(filename: _PathLike) -> float:
     basename = os.path.basename(filename)
     return float(
-        basename.split("erodep")[-1].split("Ma.nc")[0]
+        basename.split("erosion_deposition_")[-1].split("Ma.nc")[0]
     )
 
 
 def filename_from_time(time: float, dir: Optional[_PathLike] = None) -> str:
-    basename = f"erodep{time:0.0f}Ma.nc"
+    basename = f"erosion_deposition_{time:0.0f}Ma.nc"
     if dir is None:
         return basename
-    return os.path.join(dir, f"erodep{time:0.0f}Ma.nc")
+    return os.path.join(dir, f"erosion_deposition_{time:0.0f}Ma.nc")
 
 
 @lru_cache(maxsize=2)
@@ -134,7 +134,7 @@ def extract_lat_lon(dir: str = _DEFAULT_DIR) -> Tuple[
 
 @lru_cache(maxsize=1)
 def _get_erodep_filenames(dir=_DEFAULT_DIR):
-    return glob.glob(os.path.join(dir, "erodep*Ma.nc"))
+    return glob.glob(os.path.join(dir, "erosion_deposition_*Ma.nc"))
 
 
 def create_regressor(

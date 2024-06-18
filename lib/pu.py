@@ -10,6 +10,7 @@ import pandas as pd
 import pygplates
 import rioxarray
 import xarray as xr
+from gplately import PlateReconstruction
 from joblib import (
     Parallel,
     delayed,
@@ -18,6 +19,7 @@ from joblib import (
 from pulearn import BaggingPuClassifier
 from scipy.integrate import trapezoid
 from shapely.geometry import MultiPoint
+from sklearn import __version__ as _sklearn_version_string
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import (
     AdaBoostClassifier,
@@ -127,6 +129,8 @@ DEFAULT_BASE_CLASSIFIER = "randomforest"
 DEFAULT_WEIGHTS_COLUMN = None
 CONST_WEIGHTS_COLUMN = "Cu (Mt)"
 
+_sklearn_version_tup = tuple(int(i) for i in _sklearn_version_string.split("."))
+
 
 def adjusted_recall_score(y, y_pred, **kwargs):
     zero_division = kwargs.get("zero_division", "warn")
@@ -160,11 +164,16 @@ weighted_recall_auc_score = adjusted_recall_auc_score
 
 class Scorer:
     adjusted_recall_score = make_scorer(adjusted_recall_score, zero_division=0.0)
+    if _sklearn_version_tup < (1, 4, 0):
+        kw = {"needs_proba": True}
+    else:
+        kw = {"response_method": "predict"}
     adjusted_recall_auc_score = make_scorer(
         adjusted_recall_auc_score,
-        needs_proba=True,
         zero_division=0.0,
+        **kw
     )
+    del kw
 
     def __init__(self, *args, **kwargs): raise NotImplementedError
 
@@ -336,6 +345,7 @@ def generate_grid_points(
     times,
     resolution,
     polygons_dir,
+    plate_reconstruction=None,
     topological_features=None,
     rotation_model=None,
     n_jobs=1,
@@ -351,10 +361,15 @@ def generate_grid_points(
         Resolution of grid points (degrees).
     polygons_dir : str
         Directory containing subduction zone study area polygon shapefiles.
-    topological_features : FeatureCollection
-        Topological features for plate reconstruction.
-    rotation_model : RotationModel
-        Rotation model for plate reconstruction.
+    plate_reconstruction : PlateReconstruction, optional
+        Plate reconstruction to use. If `None`, then both `topological_features`
+        and `rotation_model` must be specified.
+    topological_features : FeatureCollection, optional
+        Topological features for plate reconstruction. Used if
+        `plate_reconstruction` is `None`.
+    rotation_model : RotationModel, optional
+        Rotation model for plate reconstruction. Used if
+        `plate_reconstruction` is `None`.
     n_jobs : int, default: 1
         Number of processes to use.
     verbose : bool, default: False
@@ -379,14 +394,19 @@ def generate_grid_points(
         for i in range(n_jobs)
     ]
 
+    if plate_reconstruction is None:
+        plate_reconstruction = PlateReconstruction(
+            topology_features=topological_features,
+            rotation_model=rotation_model,
+        )
+
     with Parallel(n_jobs, verbose=int(verbose)) as parallel:
         out = parallel(
             delayed(_grid_points_subset)(
                 times=t,
                 resolution=resolution,
                 polygons_dir=polygons_dir,
-                topological_features=topological_features,
-                rotation_model=rotation_model,
+                plate_reconstruction=plate_reconstruction,
                 verbose=verbose,
             )
             for t in times_split
@@ -400,38 +420,15 @@ def _grid_points_subset(
     times,
     resolution,
     polygons_dir,
-    topological_features=None,
-    rotation_model=None,
+    plate_reconstruction,
     verbose=False,
 ):
-    if (
-        topological_features is not None
-        and not isinstance(
-            topological_features,
-            pygplates.FeatureCollection,
-        )
-    ):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if (
-        rotation_model is not None
-        and not isinstance(
-            rotation_model,
-            pygplates.RotationModel,
-        )
-    ):
-        rotation_model = pygplates.RotationModel(rotation_model)
-
     out = [
         _grid_points_time(
             time=t,
             resolution=resolution,
             polygons_dir=polygons_dir,
-            topological_features=topological_features,
-            rotation_model=rotation_model,
+            plate_reconstruction=plate_reconstruction,
             verbose=verbose,
         )
         for t in times
@@ -444,34 +441,16 @@ def _grid_points_time(
     time,
     resolution,
     polygons_dir,
-    topological_features=None,
-    rotation_model=None,
+    plate_reconstruction,
     verbose=False,
 ):
-    if (
-        topological_features is not None
-        and not isinstance(
-            topological_features,
-            pygplates.FeatureCollection,
-        )
-    ):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if (
-        rotation_model is not None
-        and not isinstance(
-            rotation_model,
-            pygplates.RotationModel,
-        )
-    ):
-        rotation_model = pygplates.RotationModel(rotation_model)
-
     polygons_filename = os.path.join(
-        polygons_dir, f"study_area_{time:0.0f}Ma.shp"
+        polygons_dir, f"study_area_{time:0.0f}Ma.geojson"
     )
+    if not os.path.isfile(polygons_filename):
+        polygons_filename = os.path.join(
+            polygons_dir, f"study_area_{time:0.0f}Ma.shp"
+        )
     gdf = gpd.read_file(polygons_filename)
     polygons = gdf.geometry
     minx, miny, maxx, maxy = polygons.total_bounds
@@ -500,7 +479,7 @@ def _grid_points_time(
     if time == 0.0:
         present_lons = np.array(plons)
         present_lats = np.array(plats)
-    elif topological_features is None or rotation_model is None:
+    elif plate_reconstruction is None:
         present_lats = np.full_like(plats, np.nan)
         present_lons = np.full_like(plons, np.nan)
     else:
@@ -512,22 +491,11 @@ def _grid_points_time(
                     "age (Ma)": time,
                 }
             ),
-            rotation_model=rotation_model,
-            topological_features=topological_features,
+            plate_reconstruction=plate_reconstruction,
             times=np.arange(np.around(time) + 1),
         )
         present_lons = present_day_coords["lon_0"]
         present_lats = present_day_coords["lat_0"]
-        # present_day_coords = reconstruct_by_topologies(
-        #     topological_features,
-        #     rotation_model,
-        #     np.fliplr(intersection_coords),
-        #     start_time=float(time),
-        #     end_time=0.0,
-        #     time_step=1.0,
-        # )
-        # present_lats = present_day_coords[:, 0]
-        # present_lons = present_day_coords[:, 1]
 
     out = pd.DataFrame(
         {

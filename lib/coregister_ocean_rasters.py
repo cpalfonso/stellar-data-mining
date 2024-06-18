@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pygplates
 import xarray as xr
+from gplately import PlateReconstruction
 from sklearn.neighbors import NearestNeighbors
 from skimage.transform import resize
 
@@ -30,6 +31,7 @@ def run_coregister_ocean_rasters(
     input_data: Union[_PathLike, Sequence[pd.DataFrame]],
     output_dir: Optional[_PathLike] = None,
     combined_filename: Optional[_PathLike] = None,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
     topology_features: Optional[_FeatureCollectionInput] = None,
     rotation_model: Optional[_RotationModelInput] = None,
     plates_dir: Optional[_PathLike] = None,
@@ -57,12 +59,15 @@ def run_coregister_ocean_rasters(
         If provided, write joined data to CSV files in this directory.
     combined_filename : str, optional
         If provided, write combined joined data to this CSV file.
+    plate_reconstruction : PlateReconstruction, optional
+        Plate reconstruction used to restrict raster data to downgoing plate
+        only.
     topology_features : FeatureCollection, optional
         Topological features used to restrict raster data to
-        downgoing plate only.
+        downgoing plate only. Used if `plate_reconstruction` is not provided.
     rotation_model : RotationModel, optional
         Rotation model used to restrict raster data to
-        downgoing plate only.
+        downgoing plate only. Used if `plate_reconstruction` is not provided.
     plates_dir : str, optional
         Directory containing rasterised topological plate maps (required if
         `topology_features` and `rotation_model` are not provided).
@@ -127,6 +132,7 @@ def run_coregister_ocean_rasters(
             carbonate_dir=carbonate_dir,
             co2_dir=co2_dir,
             output_dir=output_dir,
+            plate_reconstruction=plate_reconstruction,
             topology_features=topology_features,
             rotation_model=rotation_model,
             plates_dir=plates_dir,
@@ -154,6 +160,7 @@ def run_coregister_ocean_rasters(
                     carbonate_dir=carbonate_dir,
                     co2_dir=co2_dir,
                     output_dir=output_dir,
+                    plate_reconstruction=plate_reconstruction,
                     topology_features=topology_features,
                     rotation_model=rotation_model,
                     plates_dir=plates_dir,
@@ -182,12 +189,13 @@ def _run_subset(
     carbonate_dir,
     co2_dir,
     output_dir,
+    plate_reconstruction=None,
     topology_features=None,
     rotation_model=None,
     plates_dir=None,
     **kwargs
 ):
-    if plates_dir is None:
+    if plates_dir is None and plate_reconstruction is None:
         if not isinstance(topology_features, pygplates.FeatureCollection):
             topology_features = pygplates.FeatureCollection(
                 pygplates.FeaturesFunctionArgument(
@@ -206,6 +214,7 @@ def _run_subset(
             carbonate_dir=carbonate_dir,
             co2_dir=co2_dir,
             output_dir=output_dir,
+            plate_reconstruction=plate_reconstruction,
             topology_features=topology_features,
             rotation_model=rotation_model,
             plates_dir=plates_dir,
@@ -223,6 +232,7 @@ def coregister_ocean_rasters(
     carbonate_dir: _PathLike,
     co2_dir: _PathLike,
     output_dir: _PathLike,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
     topology_features: Optional[_FeatureCollectionInput] = None,
     rotation_model: Optional[_RotationModelInput] = None,
     plates_dir: Optional[_PathLike] = None,
@@ -250,12 +260,15 @@ def coregister_ocean_rasters(
         Directory containing C02 thickness raster data.
     output_dir : str, optional
         If provided, write joined data to a CSV file in this directory.
+    plate_reconstruction : PlateReconstruction, optional
+        Plate reconstruction used to restrict raster data to downgoing plate
+        only.
     topology_features : FeatureCollection, optional
         Topological features used to restrict raster data to
-        downgoing plate only.
+        downgoing plate only. Used if `plate_reconstruction` is not provided.
     rotation_model : RotationModel, optional
         Rotation model used to restrict raster data to
-        downgoing plate only.
+        downgoing plate only. Used if `plate_reconstruction` is not provided.
     plates_dir : str, optional
         Directory containing rasterised topological plate maps (required if
         `topology_features` and `rotation_model` are not provided).
@@ -283,6 +296,7 @@ def coregister_ocean_rasters(
     if plates_dir is None:
         dset = create_plate_map(
             time=time,
+            plate_reconstruction=plate_reconstruction,
             topology_features=topology_features,
             rotation_model=rotation_model,
             **kwargs,
@@ -302,7 +316,7 @@ def coregister_ocean_rasters(
         agegrid_filename = None
     else:
         agegrid_filename = os.path.join(
-            agegrid_dir, "output_{}.0Ma.nc".format(time)
+            agegrid_dir, f"seafloor_age_{time:0.0f}Ma.nc"
         )
         if not os.path.isfile(agegrid_filename):
             raise FileNotFoundError(
@@ -312,8 +326,8 @@ def coregister_ocean_rasters(
     if sedthick_dir is None:
         sedthick_filename = None
     else:
-        sedthick_filename = _get_sedthick_filename(
-            sedthick_dir=sedthick_dir, time=time
+        sedthick_filename = os.path.join(
+            sedthick_dir, f"sediment_thickness_{time:0.0f}Ma.nc"
         )
         if not os.path.isfile(sedthick_filename):
             raise FileNotFoundError(
@@ -336,7 +350,7 @@ def coregister_ocean_rasters(
         carbonate_filename = None
     else:
         carbonate_filename = os.path.join(
-            carbonate_dir, "uncompacted_carbonate_thickness_{}Ma.nc".format(time)
+            carbonate_dir, "carbonate_thickness_{}Ma.nc".format(time)
         )
         if not os.path.isfile(carbonate_filename):
             raise FileNotFoundError(

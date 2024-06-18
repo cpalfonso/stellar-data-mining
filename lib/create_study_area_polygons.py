@@ -43,9 +43,10 @@ DEFAULT_SZ_BUFFER_DISTANCE = 6.0  # degrees
 def run_create_study_area_polygons(
     nprocs: int,
     times: Sequence[float],
-    topological_features: _FeatureCollectionInput,
-    rotation_model: _RotationModelInput,
-    output_dir: _PathLike,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    topological_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
+    output_dir: _PathLike = os.curdir,
     buffer_distance: float = DEFAULT_SZ_BUFFER_DISTANCE,
     verbose: bool = False,
     return_output: bool = False,
@@ -58,11 +59,14 @@ def run_create_study_area_polygons(
         Number of processes to use.
     times : sequence of float
         Times at which to extract study area.
+    plate_reconstruction: PlateReconstruction, optional
+        Plate reconstruction to use. If `None`, then both
+        `topological_features` and `rotation_model` must be provided.
     topological_features : FeatureCollection
         Topological features for plate reconstruction.
     rotation_model : RotationModel
         Rotation model for plate reconstruction.
-    output_dir : str
+    output_dir : str, default: current directory
         Write output shapefiles to this directory.
     buffer_distance : float, default: 6.0
         Width of subduction zone study area (arc degrees).
@@ -76,6 +80,14 @@ def run_create_study_area_polygons(
     sequence of GeoDataFrame
         The subduction zone polygons (if `return_output = True`).
     """
+    if plate_reconstruction is None:
+        if topological_features is None or rotation_model is None:
+            raise TypeError(
+                "Either `plate_reconstruction` or both "
+                "`topological_features` and `rotation_model` "
+                "must not be None."
+            )
+
     if output_dir is not None and not os.path.isdir(output_dir):
         if verbose:
             print(
@@ -90,6 +102,7 @@ def run_create_study_area_polygons(
         results = parallel(
             delayed(_multiple_timesteps)(
                 times=t,
+                plate_reconstruction=plate_reconstruction,
                 topological_features=topological_features,
                 rotation_model=rotation_model,
                 output_dir=output_dir,
@@ -108,26 +121,29 @@ def run_create_study_area_polygons(
 
 def _multiple_timesteps(
     times: Sequence[float],
-    topological_features: _FeatureCollectionInput,
-    rotation_model: _RotationModelInput,
-    output_dir: _PathLike,
     buffer_distance: float,
     return_output: bool,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    topological_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
+    output_dir: _PathLike = os.curdir,
 ):
-    if not isinstance(topological_features, pygplates.FeatureCollection):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if not isinstance(rotation_model, pygplates.RotationModel):
-        rotation_model = pygplates.RotationModel(rotation_model)
+    if plate_reconstruction is None:
+        if not isinstance(topological_features, pygplates.FeatureCollection):
+            topological_features = pygplates.FeatureCollection(
+                pygplates.FeaturesFunctionArgument(
+                    topological_features
+                ).get_features()
+            )
+        if not isinstance(rotation_model, pygplates.RotationModel):
+            rotation_model = pygplates.RotationModel(rotation_model)
 
     out = []
     for time in times:
         out.append(
             create_study_area_polygons(
                 time=time,
+                plate_reconstruction=plate_reconstruction,
                 topological_features=topological_features,
                 rotation_model=rotation_model,
                 output_dir=output_dir,
@@ -141,9 +157,10 @@ def _multiple_timesteps(
 
 def create_study_area_polygons(
     time: float,
-    topological_features: _FeatureCollectionInput,
-    rotation_model: _RotationModelInput,
-    output_dir: _PathLike,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    topological_features: Optional[_FeatureCollectionInput] = None,
+    rotation_model: Optional[_RotationModelInput] = None,
+    output_dir: _PathLike = os.curdir,
     buffer_distance: float = DEFAULT_SZ_BUFFER_DISTANCE,
     clip_to_overriding_plate: bool = False,
     return_output: bool = False,
@@ -154,11 +171,14 @@ def create_study_area_polygons(
     ----------
     time : float
         Time at which to extract study area.
+    plate_reconstruction: PlateReconstruction, optional
+        Plate reconstruction to use. If `None`, then both
+        `topological_features` and `rotation_model` must be provided.
     topological_features : FeatureCollection
         Topological features for plate reconstruction.
     rotation_model : RotationModel
         Rotation model for plate reconstruction.
-    output_dir : str
+    output_dir : str, default: current directory
         Write output shapefile to this directory.
     buffer_distance : float, default: 6.0
         Width of subduction zone study area (arc degrees).
@@ -173,22 +193,26 @@ def create_study_area_polygons(
     GeoDataFrame
         The subduction zone polygons (if `return_output = True`).
     """
-    if not isinstance(topological_features, pygplates.FeatureCollection):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if not isinstance(rotation_model, pygplates.RotationModel):
-        rotation_model = pygplates.RotationModel(rotation_model)
+    if plate_reconstruction is None:
+        if not isinstance(topological_features, pygplates.FeatureCollection):
+            topological_features = pygplates.FeatureCollection(
+                pygplates.FeaturesFunctionArgument(
+                    topological_features
+                ).get_features()
+            )
+        if not isinstance(rotation_model, pygplates.RotationModel):
+            rotation_model = pygplates.RotationModel(rotation_model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ImportWarning)
+            plate_reconstruction = PlateReconstruction(
+                rotation_model=rotation_model,
+                topology_features=topological_features,
+            )
+    else:
+        topological_features = plate_reconstruction.topology_features
+        rotation_model = plate_reconstruction.rotation_model
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ImportWarning)
-        reconstruction = PlateReconstruction(
-            rotation_model=rotation_model,
-            topology_features=topological_features,
-        )
-    gplot = PlotTopologies(reconstruction)
+    gplot = PlotTopologies(plate_reconstruction)
     gplot.time = float(time)
     plate_polygons = gplot.get_all_topologies()
     plate_polygons["feature_type"] = plate_polygons["feature_type"].astype(str)
@@ -250,7 +274,7 @@ def create_study_area_polygons(
 
     if output_dir is not None:
         output_filename = os.path.join(
-            output_dir, "study_area_{}Ma.shp".format(time)
+            output_dir, f"study_area_{time:0.0f}Ma.geojson"
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)

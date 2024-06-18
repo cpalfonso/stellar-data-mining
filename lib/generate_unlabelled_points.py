@@ -28,6 +28,7 @@ def generate_unlabelled_points(
     threads=1,
     output_filename=DEFAULT_UNLABELED_POINTS_FILENAME,
     seed=None,
+    plate_reconstruction=None,
     topological_features=None,
     rotation_model=None,
     verbose=False,
@@ -48,10 +49,14 @@ def generate_unlabelled_points(
         If provided, write output data to this CSV file.
     seed: int, optional
         Seed for random number generator.
+    plate_reconstruction: PlateReconstruction, optional
+        Plate reconstruction used to reconstruct present-day coordinates.
     topological_features : FeatureCollection, optional
         Topological features used to reconstruct present-day coordinates.
+        Used if `plate_reconstruction` is not provided.
     rotation_model : RotationModel, optional
         Rotation model used to reconstruct present-day coordinates.
+        Used if `plate_reconstruction` is not provided.
     verbose : bool, default: False
         Print log to stderr.
 
@@ -69,6 +74,7 @@ def generate_unlabelled_points(
             delayed(_multiple_timesteps)(
                 times=t,
                 input_dir=input_dir,
+                plate_reconstruction=plate_reconstruction,
                 topological_features=topological_features,
                 rotation_model=rotation_model,
                 num=num,
@@ -126,20 +132,22 @@ def _multiple_timesteps(
         input_dir,
         num,
         rng,
+        plate_reconstruction,
         topological_features,
         rotation_model,
 ):
     if not isinstance(rng, np.random.Generator):
         rng = np.random.default_rng(seed=rng)
 
-    if not isinstance(topological_features, pygplates.FeatureCollection):
-        topological_features = pygplates.FeatureCollection(
-            pygplates.FeaturesFunctionArgument(
-                topological_features
-            ).get_features()
-        )
-    if not isinstance(rotation_model, pygplates.RotationModel):
-        rotation_model = pygplates.RotationModel(rotation_model)
+    if plate_reconstruction is None:
+        if not isinstance(topological_features, pygplates.FeatureCollection):
+            topological_features = pygplates.FeatureCollection(
+                pygplates.FeaturesFunctionArgument(
+                    topological_features
+                ).get_features()
+            )
+        if not isinstance(rotation_model, pygplates.RotationModel):
+            rotation_model = pygplates.RotationModel(rotation_model)
 
     out = []
     for time in times:
@@ -147,6 +155,7 @@ def _multiple_timesteps(
             _generate_points_timestep(
                 time=time,
                 input_dir=input_dir,
+                plate_reconstruction=plate_reconstruction,
                 topological_features=topological_features,
                 rotation_model=rotation_model,
                 num=num,
@@ -159,14 +168,19 @@ def _multiple_timesteps(
 def _generate_points_timestep(
     time,
     input_dir,
+    plate_reconstruction,
     topological_features,
     rotation_model,
     num,
     rng,
 ):
     input_filename = os.path.join(
-        input_dir, "study_area_{}Ma.shp".format(time)
+        input_dir, f"study_area_{time:0.0f}Ma.geojson"
     )
+    if not os.path.isfile(input_filename):
+        input_filename = os.path.join(
+            input_dir, f"study_area_{time:0.0f}Ma.shp"
+        )
     gdf = gpd.read_file(input_filename)
 
     points = np.full((num, 2), np.nan)
@@ -188,7 +202,10 @@ def _generate_points_timestep(
         to_fill = np.where(np.any(np.isnan(points), axis=1))[0]
         num_to_fill = to_fill.size
 
-    if topological_features is not None and rotation_model is not None:
+    if (
+        plate_reconstruction is not None
+        or (topological_features is not None and rotation_model is not None)
+    ):
         if time == 0.0:
             # present_day_coords = np.fliplr(points)
             present_day_coords = pd.DataFrame(
@@ -206,6 +223,7 @@ def _generate_points_timestep(
                         "age (Ma)": time,
                     }
                 ),
+                plate_reconstruction=plate_reconstruction,
                 rotation_model=rotation_model,
                 topological_features=topological_features,
                 times=np.arange(np.around(time) + 1.0, dtype=np.int_),
