@@ -208,8 +208,7 @@ def plot_erosion_maps(
         deposits = deposits[deposits["label"] == "positive"]
         deposits = reconstruct_by_topologies(
             data=deposits,
-            rotation_model=rotation_filenames,
-            topological_features=topology_filenames,
+            plate_reconstruction=gplot.plate_reconstruction,
             times=times,
             verbose=verbose > 0,
         )
@@ -410,8 +409,7 @@ def plot_erosion_rate_maps(
         deposits = deposits[deposits["label"] == "positive"]
         deposits = reconstruct_by_topologies(
             data=deposits,
-            rotation_model=rotation_filenames,
-            topological_features=topology_filenames,
+            plate_reconstruction=gplot.plate_reconstruction,
             times=times,
             verbose=verbose > 0,
         )
@@ -608,8 +606,7 @@ def plot_likelihood_maps(
         deposits = deposits[deposits["label"] == "positive"]
         deposits = reconstruct_by_topologies(
             data=deposits,
-            rotation_model=rotation_filenames,
-            topological_features=topology_filenames,
+            plate_reconstruction=gplot.plate_reconstruction,
             times=times,
             verbose=verbose > 0,
         )
@@ -814,8 +811,7 @@ def plot_combined_maps(
         deposits = deposits[deposits["label"] == "positive"]
         deposits = reconstruct_by_topologies(
             data=deposits,
-            rotation_model=rotation_filenames,
-            topological_features=topology_filenames,
+            plate_reconstruction=gplot.plate_reconstruction,
             times=times,
             verbose=verbose > 0,
         )
