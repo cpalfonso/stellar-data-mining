@@ -42,7 +42,15 @@ __all__ = [
 ]
 
 _DIRNAME = os.path.abspath(os.path.dirname(__file__))
-_DEFAULT_DIR = os.path.abspath(os.path.join(_DIRNAME, "..", "..", "erodep_maps"))
+_DEFAULT_DIR = os.path.abspath(
+    os.path.join(
+        _DIRNAME,
+        "..",
+        "..",
+        "source_data",
+        "ErosionDeposition",
+    )
+)
 
 
 def time_from_filename(filename: _PathLike) -> float:
