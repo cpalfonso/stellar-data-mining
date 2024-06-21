@@ -99,37 +99,6 @@ def run_calculate_convergence(
     data = pd.concat(data)
     return data
 
-    if nprocs == 1:
-        calculate_convergence(
-            min_time=min_time,
-            max_time=max_time,
-            topology_filenames=topology_filenames,
-            rotation_filenames=rotation_filenames,
-            output_dir=output_dir,
-        )
-    else:
-        from joblib import Parallel, delayed
-
-        times = np.array_split(
-            np.arange(min_time, max_time + INCREMENT, INCREMENT),
-            nprocs,
-        )
-        start_times = [i[0] for i in times]
-        end_times = [i[-1] for i in times]
-
-        v = 10 if verbose else 0
-        p = Parallel(nprocs, verbose=v)
-        p(
-            delayed(calculate_convergence)(
-                start_time,
-                end_time,
-                topology_filenames,
-                rotation_filenames,
-                output_dir,
-            )
-            for start_time, end_time in zip(start_times, end_times)
-        )
-
 
 def calculate_convergence(
     min_time: float,
@@ -219,7 +188,7 @@ def calculate_convergence(
 def _parallel_func(
     plate_reconstruction: PlateReconstruction,
     time: float,
-    tessellation_threshold_radians: float = 0.01,
+    tessellation_threshold_radians: float = 0.001,
     ignore_warnings: bool = True,
 ) -> pd.DataFrame:
     data = plate_reconstruction.tessellate_subduction_zones(

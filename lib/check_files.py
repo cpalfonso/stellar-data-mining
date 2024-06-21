@@ -184,6 +184,10 @@ def _download_extract(
 
 
 def _fetch_data(url, download_dir, filename=None, verbose=False):
+    # Don't print progress if in a notebook
+    # (can result in hundreds of lines of output)
+    verbose = verbose and ("get_ipython" not in dir())
+
     if filename is None:
         filename = "data.zip"
     filename = os.path.join(download_dir, filename)
