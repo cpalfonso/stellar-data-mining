@@ -30,7 +30,7 @@ def create_animation(
             "yuv420p",
         ]
 
-    logger = kwargs.pop("logger", "bar")
+    logger = kwargs.pop("logger", None)
     audio = kwargs.pop("audio", False)
 
     with ImageSequenceClip(image_filenames, fps=fps) as clip:
