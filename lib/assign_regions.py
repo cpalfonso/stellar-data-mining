@@ -42,6 +42,9 @@ def assign_regions(
         # Read from file
         regions = gpd.read_file(regions)
 
+    if points.crs is None:
+        points.crs = regions.crs
+
     return (
         points
             .sjoin(regions, how="left")

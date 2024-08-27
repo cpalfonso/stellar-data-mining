@@ -4,7 +4,6 @@ import warnings
 from sys import stderr
 from typing import (
     List,
-    Literal,
     Optional,
     Sequence,
     Union,
@@ -12,10 +11,10 @@ from typing import (
 
 import numpy as np
 import pygplates
-import xarray as xr
 from gplately import (
     PlateReconstruction,
     PlotTopologies,
+    Raster,
 )
 from rasterio.enums import MergeAlg
 from rasterio.features import rasterize
@@ -35,7 +34,7 @@ def run_create_plate_map(
     tessellate_degrees: Optional[float] = None,
     return_output: bool = True,
     verbose: bool = False,
-) -> Optional[List[xr.Dataset]]:
+) -> Optional[List[Raster]]:
     """Rasterise a topological plate model at the given times.
 
     Parameters
@@ -62,7 +61,7 @@ def run_create_plate_map(
 
     Returns
     -------
-    sequence of Dataset
+    sequence of gplately.Raster
         The rasterised plate model, if `return_output = True`.
     """
     if output_dir is not None:
@@ -160,7 +159,7 @@ def create_plate_map(
     tessellate_degrees: Optional[float] = None,
     output_filename: Optional[Union[os.PathLike, str]] = None,
     verbose: bool = False,
-) -> xr.Dataset:
+) -> Raster:
     """Rasterise a topological plate model at a given time.
 
     Parameters
@@ -187,7 +186,7 @@ def create_plate_map(
 
     Returns
     -------
-    Dataset
+    gplately.Raster
         The rasterised plate model.
     """
     time = float(time)
@@ -257,18 +256,8 @@ def create_plate_map(
     )
     # Output is always upper-left origin
     grid = np.flipud(grid)  # convert to lower-left
-
-    dset = xr.Dataset(
-        data_vars={
-            "plate_id": (("lat", "lon"), grid),
-        },
-        coords={
-            "lon": lons,
-            "lat": lats,
-        },
-    )
+    raster = Raster(grid, extent="global", origin="lower")
     if output_filename is not None:
-        encoding = {"plate_id": {"dtype": "int32", "zlib": True}}
         if verbose:
             print(
                 " - Writing output file: "
@@ -276,5 +265,5 @@ def create_plate_map(
                 file=stderr,
                 flush=True,
             )
-        dset.to_netcdf(output_filename, encoding=encoding)
-    return dset
+        raster.save_to_netcdf4(output_filename)
+    return raster

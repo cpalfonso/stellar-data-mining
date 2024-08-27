@@ -65,6 +65,27 @@ _RotationModelInput = Union[
 ]
 
 
+def calculate_carbon(df, inplace=False):
+    if (not inplace) or (not isinstance(df, pd.DataFrame)):
+        if isinstance(df, str):
+            df = pd.read_csv(df)
+        else:
+            df = pd.DataFrame(df)
+    seds_thickness = df["carbonate_thickness (m)"]
+    seds = (
+        seds_thickness
+        * 0.7  # average CO3 in carbonate rock
+        * 0.41  # pore space
+        * 2710.0  # density
+        * 12.0/100.1  # CaCO3 to C
+        * 1.0e-3  # kg/m2 to t/m2
+    )
+    crust = df["crustal_carbon_density (t/m^2)"]
+    df["carbonate_carbon_density (t/m^2)"] = seds
+    df["total_carbon_density (t/m^2)"] = seds + crust
+    return df
+
+
 def calculate_slab_flux(df, inplace=False):
     """Calculate slab flux from convergence rate and plate thickness.
 
@@ -357,6 +378,8 @@ def reconstruct_by_topologies(
             new_lat_col = f"lat_{t - 1:0.0f}"
 
             subset = data[~data[old_lon_col].isna()]
+            if subset.shape[0] == 0:
+                continue
             lons = subset[old_lon_col]
             lats = subset[old_lat_col]
             try:
@@ -391,6 +414,7 @@ def format_feature_name(s, bold=False):
         "(m)": r"($\mathrm{m}$)",
         "(m^3/m^2)": r"($\mathrm{m^3 \; m^{-2}}$)",
         "(m^2/yr)": r"($\mathrm{m^2 \; {yr}^{-1}}$)",
+        "(t/m^2)": r"($\mathrm{t \; m^{-2}}$)",
         "(Ma)": r"($\mathrm{Ma}$)",
         "(degrees)": r"($\mathrm{\degree}$)",
         "(km)": r"($\mathrm{km}$)",

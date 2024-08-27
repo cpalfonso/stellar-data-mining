@@ -685,6 +685,7 @@ def _add_deposits(
             f"lon_{time:0.0f}" in deposits.columns
             and f"lat_{time:0.0f}" in deposits.columns
         ):
+            linestyle = kwargs.pop("linestyle", "none")
             alpha = kwargs.pop("alpha", 1.0)
             markersize = kwargs.pop("markersize", 20.0)
             zorder = kwargs.pop("zorder", 1)
@@ -707,6 +708,7 @@ def _add_deposits(
                     alpha=alpha,
                     markersize=markersize,
                     zorder=zorder,
+                    linestyle=linestyle,
                     **kwargs
                 )
             )
@@ -717,6 +719,7 @@ def _add_deposits(
                     alpha=oldalpha,
                     markersize=oldmarkersize,
                     zorder=oldzorder,
+                    linestyle=linestyle,
                     **kwargs
                 )
             )

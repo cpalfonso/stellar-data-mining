@@ -10,7 +10,11 @@ import numpy as np
 import pandas as pd
 import pygplates
 import xarray as xr
-from gplately import PlateReconstruction
+from gplately import (
+    PlateReconstruction,
+    Raster,
+    EARTH_RADIUS,
+)
 from sklearn.neighbors import NearestNeighbors
 from skimage.transform import resize
 
@@ -176,6 +180,14 @@ def run_coregister_ocean_rasters(
             out.extend(i)
 
     out = pd.concat(out, ignore_index=True)
+    # out = extract_subducted_thickness(
+    #     data=out,
+    #     columns="default",
+    #     grid_resolution=0.5,
+    #     plate_reconstruction=plate_reconstruction,
+    #     method="nearest",
+    # )
+
     if combined_filename is not None:
         out.to_csv(combined_filename, index=False)
     return out
@@ -294,21 +306,20 @@ def coregister_ocean_rasters(
         df = pd.DataFrame(df)
 
     if plates_dir is None:
-        dset = create_plate_map(
+        raster = create_plate_map(
             time=time,
             plate_reconstruction=plate_reconstruction,
             topology_features=topology_features,
             rotation_model=rotation_model,
             **kwargs,
         )
-        plates = np.array(dset["plate_id"])
+        plates = np.array(raster)
     else:
         plates_filename = os.path.join(
             plates_dir,
             "plate_ids_{}Ma.nc".format(time),
         )
-        with xr.open_dataset(plates_filename) as dset:
-            plates = np.array(dset["plate_id"])
+        plates = np.array(Raster(plates_filename))
     plates[np.isnan(plates)] = -1
     plates = plates.astype(np.int_)
 
@@ -429,10 +440,10 @@ def coregister_ocean_rasters(
             "sedthick",
             "carbonate",
             "co2",
-            "subducted_thickness",
-            "subducted_sediments",
-            "subducted_carbonates",
-            "subducted_water",
+            # "subducted_thickness",
+            # "subducted_sediments",
+            # "subducted_carbonates",
+            # "subducted_water",
         ),
     ):
         if filename is None:
@@ -471,11 +482,11 @@ def coregister_ocean_rasters(
         "spreadrate": "seafloor_spreading_rate (km/Myr)",
         "sedthick": "sediment_thickness (m)",
         "carbonate": "carbonate_thickness (m)",
-        "co2": "co2_volume (m^3/m^2)",
-        "subducted_thickness": "subducted_plate_volume (m)",
-        "subducted_sediments": "subducted_sediment_volume (m)",
-        "subducted_carbonates": "subducted_carbonates_volume (m)",
-        "subducted_water": "subducted_water_volume (m)",
+        "co2": "crustal_carbon_density (t/m^2)",
+        # "subducted_thickness": "subducted_plate_volume (m)",
+        # "subducted_sediments": "subducted_sediment_volume (m)",
+        # "subducted_carbonates": "subducted_carbonate_volume (m)",
+        # "subducted_water": "subducted_water_volume (m)",
     }
     for plate_id in df["subducting_plate_ID"].unique():
         df_plate = df[df["subducting_plate_ID"] == plate_id]
@@ -517,28 +528,181 @@ def coregister_ocean_rasters(
     return df
 
 
-def _get_sedthick_filename(sedthick_dir, time):
-    filenames = [i for i in os.listdir(sedthick_dir) if i.endswith(".nc")]
-    for filename in filenames:
-        try:
-            resolution = _extract_sedthick_resolution(filename)
-            break
-        except Exception:
-            pass
-    else:
-        raise ValueError(
-            "Could not find sediment thickness files in directory: "
-            + sedthick_dir
+def _coregister_raster(
+    raster,
+    points: pd.DataFrame,
+    plate_map: Optional[Raster] = None,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    time: Optional[float] = None,
+    method="nearest",
+):
+    raster = Raster(raster)
+    if plate_map is None and plate_reconstruction is not None and time is not None:
+        plate_map = create_plate_map(
+            time=time,
+            plate_reconstruction=plate_reconstruction,
+            resolution=360 / (raster.shape[1] - 1),
+        ).data
+    elif plate_map is not None:
+        plate_map = np.array(plate_map)
+
+    if plate_map is None or "subducting_plate_ID" not in points.columns:
+        raster = raster.fill_NaNs()
+        new_col = raster.interpolate(
+            lons=points["lon"],
+            lats=points["lat"],
+            method=method,
         )
+        new_col = pd.Series(new_col, index=points.index)
+    else:
+        raster = raster.resize(plate_map.shape[1], plate_map.shape[0])
+        new_col = pd.Series(np.nan, index=points.index)
+        for plate_id, subset_pid in points.groupby("subducting_plate_ID"):
+            arr_tmp = np.array(raster)
+            arr_tmp[plate_map != plate_id] = np.nan
+            raster_pid = Raster(arr_tmp).fill_NaNs()
+            intpd = raster_pid.interpolate(
+                lons=subset_pid["lon"],
+                lats=subset_pid["lat"],
+                method=method,
+            )
+            for i, val in zip(subset_pid.index, intpd):
+                new_col.at[i] = val
+    return new_col
 
-    sedthick_filename = os.path.join(
-        sedthick_dir, "sed_thick_{}d_{}.nc".format(resolution, time)
-    )
-    return sedthick_filename
+
+def extract_subducted_thickness(
+    data,
+    columns=None,
+    grid_resolution=0.5,
+    plate_reconstruction: Optional[PlateReconstruction] = None,
+    method="nearest",
+):
+    if columns == "default" or columns is None:
+        columns = [
+            i for i in
+            [
+                "sediment_thickness (m)",
+                "plate_thickness (m)",
+                "carbonate_thickness (m)",
+                "total_water_thickness (m)",
+                "total_carbon_density (t/m^2)",
+            ]
+            if i in data.columns
+        ]
+    elif isinstance(columns, str):
+        columns = [columns]
+    else:
+        columns = list(columns)
+
+    times = np.sort(data["age (Ma)"].unique())[::-1]
+    grids = {i: [] for i in columns}
+
+    xedges = np.arange(-180.0, 180.0 + grid_resolution, grid_resolution)
+    glons = (0.5 * (np.roll(xedges, 1) + xedges))[1:]
+    yedges = np.arange(-90.0, 90.0 + grid_resolution, grid_resolution)
+    glats = (0.5 * (np.roll(yedges, 1) + yedges))[1:]
+
+    mlons, mlats = np.meshgrid(glons, glats)
+    lon_lengths = _longitude_length(mlats, delta=grid_resolution)
+    lat_lengths = np.full_like(mlats, _latitude_length(delta=grid_resolution))
+    cell_areas = lon_lengths * lat_lengths
+
+    for time in times:
+        subset = data[data["age (Ma)"] == time]
+        for column in columns:
+            # Thickness in m
+            thickness = np.array(subset[column])
+            # Trench segment length in m
+            segment_length = (
+                np.deg2rad(np.array(subset["arc_segment_length (degrees)"]))
+                * EARTH_RADIUS
+                * 1000.0
+            )
+            # Rate of subduction in m/Myr
+            subduction_rate = (
+                np.array(subset["convergence_rate_orthogonal (cm/yr)"])
+                * 0.01
+                * 1.0e6
+            )
+            # Volume of material subducted along trench segment in m^3/Myr
+            volume_rate = thickness * segment_length * subduction_rate
+            volume_rate = np.clip(volume_rate, 0.0, np.inf)
+
+            # Volume subducted in each grid cell in m^3/Myr
+            total_volume_rate, _, _ = np.histogram2d(
+                x=subset["lon"],
+                y=subset["lat"],
+                bins=(xedges, yedges),
+                weights=volume_rate,
+            )
+            total_volume_rate = total_volume_rate.T
+
+            # Volume subducted per unit area in m/Myr (m^3/Myr / m)
+            density = total_volume_rate / cell_areas
+
+            grids[column].append(density)
+
+    grids = {i: np.dstack(grids[i]) for i in grids}
+    cumulative_grids = {
+        i: np.cumsum(grids[i], axis=-1)
+        for i in grids
+    }
+
+    colname_map = {
+        "sediment_thickness (m)": "subducted_sediment_volume (m)",
+        "plate_thickness (m)": "subducted_plate_volume (m)",
+        "carbonate_thickness (m)": "subducted_carbonate_volume (m)",
+        "total_water_thickness (m)": "subducted_water_volume (m)",
+        "total_carbon_density (t/m^2)": "subducted_carbon_density (t/m^2)",
+    }
+
+    to_concat_rows = []
+    for time, subset in data.groupby("age (Ma)"):
+        to_concat_cols = [subset]
+        idx = np.where(times == time)[0][0]
+        if plate_reconstruction is not None:
+            plate_map = create_plate_map(
+                time=time,
+                plate_reconstruction=plate_reconstruction,
+                resolution=grid_resolution,
+            )
+        else:
+            plate_map = None
+        for column in columns:
+            raster = cumulative_grids[column][..., idx]
+            new_col = _coregister_raster(
+                raster=raster,
+                points=subset,
+                plate_map=plate_map,
+                method=method,
+            )
+            new_colname = colname_map.get(
+                column,
+                (
+                    "subducted_"
+                    + column.split()[0].replace('_thickness', '_volume')
+                    + " (m)"
+                )
+            )
+            new_col.name = new_colname
+            to_concat_cols.append(new_col)
+        to_concat_rows.append(pd.concat(to_concat_cols, axis="columns"))
+    return pd.concat(to_concat_rows, axis="index")
 
 
-def _extract_sedthick_resolution(filename):
-    no_extension = os.extsep.join(filename.split(os.extsep)[:-1])
-    split = no_extension.split("_")
-    resolution = split[2].rstrip("d")
-    return resolution
+def _longitude_length(latitude, delta=1.0, radius=EARTH_RADIUS * 1000.0, degrees=True):
+    """Width (in m) of a grid cell with a width of `delta` degrees or radians."""
+    if degrees:
+        latitude = np.deg2rad(latitude)
+        length = np.deg2rad(1.0) * radius * np.cos(latitude)
+    else:
+        length = radius * np.cos(latitude)
+    return delta * length
+
+
+def _latitude_length(delta=1.0, radius=EARTH_RADIUS * 1000.0, degrees=True):
+    """Height (in m) of a grid cell with a height of `delta` degrees or radians."""
+    if degrees:
+        delta = np.deg2rad(delta)
+    return radius * delta

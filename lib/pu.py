@@ -162,6 +162,15 @@ weighted_recall_score = adjusted_recall_score
 weighted_recall_auc_score = adjusted_recall_auc_score
 
 
+def optimal_threshold(y, y_pred, scorer, **kwargs):
+    res = kwargs.pop("res", 100)
+    threshs = np.linspace(0, 1, res)
+    scores = np.zeros_like(threshs)
+    for i, thresh in enumerate(threshs):
+        scores[i] = scorer(y, y_pred >= thresh, **kwargs)
+    return threshs[scores == np.nanmax(scores)][0]
+
+
 class Scorer:
     adjusted_recall_score = make_scorer(adjusted_recall_score, zero_division=0.0)
     if _sklearn_version_tup < (1, 4, 0):

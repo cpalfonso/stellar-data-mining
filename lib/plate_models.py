@@ -75,12 +75,13 @@ def get_plate_reconstruction(
         topology_files = []
         static_polygons = []
         for g in globs:
-            filenames = glob.glob(os.path.join(model_dir, "**", g), recursive=True)
-            topology_files.extend(filenames)
-            rotation_files.extend(filenames)
+            all_filenames = glob.glob(os.path.join(model_dir, "**", g), recursive=True)
+            topology_files.extend(glob.glob(os.path.join(model_dir, g)))
+            # topology_files.extend(filenames)
+            # rotation_files.extend(filenames)
             static_polygons.extend(
                 [
-                    i for i in filenames
+                    i for i in all_filenames
                     if "static" in os.path.basename(i).lower()
                     and "polygon" in os.path.basename(i).lower()
                 ]
