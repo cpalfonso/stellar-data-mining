@@ -13,17 +13,12 @@ ALL_NOTEBOOKS = (
     "00b-extract_grid_data",
     "00c-extract_training_data_global",
     "01-create_classifiers",
-    "01a-create_classifiers_global",
-    # "01b-cross_validation",
     "02-create_probability_maps",
-    "02a-create_probability_maps_global",
-    "02b-present_day_probabilities",
     "03-create_probability_animations",
-    "03a-create_probability_animations_global",
-    # "Fig-01-02-probability_snapshots",
-    # "Fig-03-04-feature_importance",
-    # "Fig-05-partial_dependence",
-    # "Fig-06-performance"
+    "04-create_erosion_distribution.ipynb",
+    "05-create_preservation_maps.ipynb",
+    "06-create_preservation_animations.ipynb",
+    "07-partial_dependence.ipynb",
 )
 
 def run_notebook(
