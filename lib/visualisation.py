@@ -61,7 +61,7 @@ TEETH_KWARGS = {
 SCATTER_KWARGS = {
     "linestyle": "none",
     "marker": "*",
-    "markersize": 20,
+    "markersize": 12,
     "markerfacecolor": "red",
     "markeredgecolor": "black",
     "markeredgewidth": 0.6,
@@ -687,7 +687,7 @@ def _add_deposits(
         ):
             linestyle = kwargs.pop("linestyle", "none")
             alpha = kwargs.pop("alpha", 1.0)
-            markersize = kwargs.pop("markersize", 20.0)
+            markersize = kwargs.pop("markersize", 15.0)
             zorder = kwargs.pop("zorder", 1)
             oldalpha = kwargs.pop("oldalpha", alpha * 0.25)
             oldmarkersize = kwargs.pop("oldmarkersize", markersize * 0.5)
