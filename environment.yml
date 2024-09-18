@@ -15,6 +15,7 @@ dependencies:
   - netcdf4
   - numpy
   - pandas
+  - papermill
   - pip
   - plate-model-manager
   - pooch
