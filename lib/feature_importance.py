@@ -13,6 +13,7 @@ import pandas as pd
 from joblib import load
 from scipy.stats import kendalltau
 from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
 
 from .misc import format_feature_name
 
@@ -36,6 +37,8 @@ def calculate_importances(clf, names=None):
     """
     if not isinstance(clf, BaseEstimator):
         clf = load(clf)
+    if isinstance(clf, Pipeline):
+        clf = clf[-1]
     if hasattr(clf, "feature_importances_"):
         importances = np.array(clf.feature_importances_)
     elif hasattr(clf, "estimators_"):
