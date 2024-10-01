@@ -1,0 +1,102 @@
+all_notebooks:
+  # These parameters will be applied to all notebooks.
+  # If one of these parameters also appears in the corresponding
+  # notebook section, it can be specified there on a per-notebook basis.
+  output_dir: outputs
+  use_extracted_data: True
+  n_jobs: 4
+  verbose: False
+  random_seed: 1234
+  overwrite_output: True
+  timespan:
+    min: 0
+    max: 170
+  plate_model:
+    use_provided_plate_model: True
+    plate_model_name:
+
+notebook_00a:
+
+notebook_00b:
+
+notebook_00c:
+
+notebook_01:
+  output_dir:
+  n_jobs:
+  verbose:
+  random_seed:
+  use_extracted_data:
+  overwrite_output:
+  use_same_features: True
+  automatic_feature_selection: False
+
+notebook_02:
+  output_dir:
+  n_jobs:
+  verbose:
+  use_extracted_data:
+  overwrite_output:
+
+notebook_03:
+  output_dir:
+  n_jobs:
+  timespan:
+  verbose:
+  use_extracted_data:
+  overwrite_output:
+
+notebook_04:
+  output_dir:
+  n_jobs:
+  timespan:
+  verbose:
+  random_seed:
+  use_extracted_data:
+  outlier_contamination: 0.06
+
+notebook_05:
+  output_dir:
+  n_jobs:
+  verbose:
+  use_extracted_data:
+
+notebook_06:
+  output_dir:
+  n_jobs:
+  verbose:
+  use_extracted_data:
+
+notebook_07:
+  output_dir:
+  n_jobs:
+  random_seed:
+  use_extracted_data:
+  overwrite_output:
+  grid_resolution: 100
+
+notebook_08:
+  output_dir:
+  use_extracted_data:
+
+defaults:
+  # N.B. Do not modify this section.
+  # If any values are missing from the above sections,
+  # the default values here will be used.
+  all_notebooks:
+    output_dir: "outputs"
+    use_extracted_data: False
+    n_jobs: 4
+    verbose: False
+    random_seed: 1234
+    overwrite_output: True
+    timespan:
+      min: 0
+      max: 170
+    plate_model:
+      use_provided_plate_model: True
+      plate_model_name:
+  notebook_04:
+    outlier_contamination: 0.06
+  notebook_07:
+    grid_resolution: 100
