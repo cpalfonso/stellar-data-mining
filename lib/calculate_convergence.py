@@ -14,7 +14,10 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from gplately import PlateReconstruction
+from gplately import (
+    PlateReconstruction,
+    EARTH_RADIUS,
+)
 from ptt import subduction_convergence
 
 from .misc import _PathLike
@@ -97,6 +100,15 @@ def run_calculate_convergence(
                 for t in times
             )
     data = pd.concat(data)
+    for col in (
+        "distance_to_trench_edge (degrees)",
+        "distance_from_trench_start (degrees)",
+    ):
+        if col not in data.columns:
+            continue
+        x_km = np.deg2rad(data[col]) * EARTH_RADIUS
+        data[col.replace("(degrees)", "(km)")] = x_km
+        data = data.drop(columns=col, errors="ignore")
     return data
 
 
